@@ -79,9 +79,9 @@ docker compose up -d --build
 ### 3. Akses Web Dashboard
 Buka browser dan akses:
 ```text
-http://localhost:8080
+http://localhost:3080
 ```
-*(Atau ganti `localhost` dengan IP server Linux Anda, misal: `http://10.132.x.x:8080`)*
+*(Atau ganti `localhost` dengan IP server Linux Anda, misal: `http://10.132.x.x:3080`)*
 
 ---
 

@@ -6,7 +6,7 @@ services:
     container_name: oto-reboot
     restart: unless-stopped
     ports:
-      - "8080:8000"
+      - "3080:8000"
     environment:
       - TZ=Asia/Jakarta
       - DATA_DIR=/app/data
