@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}Jadwal Otomatis - OTO REBOOT{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start align-items-md-center flex-column flex-md-row gap-3 mb-4">
+    <div>
+        <h2 class="fw-extrabold mb-1 tracking-tight" style="font-weight: 800; letter-spacing: -0.03em;">
+            Jadwal Reboot Otomatis
+        </h2>
+        <p class="text-secondary mb-0 small">
+            Otomatisasi pembersihan cache & reboot Access Point secara rutin via APScheduler (Cron Engine).
+        </p>
+    </div>
+    <div>
+        <button class="btn btn-modern-primary" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+            <i class="bi bi-alarm-fill"></i> Tambah Jadwal Baru
+        </button>
+    </div>
+</div>
+
+<!-- Table Card -->
+<div class="glass-card">
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th width="70">Status</th>
+                    <th>Nama Jadwal</th>
+                    <th>Waktu Eksekusi</th>
+                    <th>Frekuensi / Hari</th>
+                    <th>Target Perangkat</th>
+                    <th>Terakhir Dijalankan</th>
+                    <th class="text-end pe-4">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if schedules %}
+                    {% for s in schedules %}
+                    <tr>
+                        <td>
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" role="switch" style="cursor: pointer;" {% if s.is_enabled %}checked{% endif %} onchange="toggleSchedule({{ s.id }}, this.checked)">
+                            </div>
+                        </td>
+                        <td>
+                            <div class="fw-bold text-light">{{ s.name }}</div>
+                            <span class="text-secondary small font-mono" style="font-size: 0.72rem;">ID: #SCH-{{ s.id }}</span>
+                        </td>
+                        <td>
+                            <div class="d-inline-flex align-items-center gap-2 p-2 px-3 rounded-3" style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.25);">
+                                <i class="bi bi-clock text-primary"></i>
+                                <span class="font-mono fw-bold fs-6 text-light">{{ "%02d"|format(s.hour) }}:{{ "%02d"|format(s.minute) }}</span>
+                                <span class="text-secondary small">WIB</span>
+                            </div>
+                        </td>
+                        <td>
+                            {% if not s.days_of_week or s.days_of_week == '*' %}
+                                <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);">
+                                    Setiap Hari
+                                </span>
+                            {% else %}
+                                <span class="badge" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.1);">
+                                    {{ s.days_of_week }}
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if s.target_type == 'all' %}
+                                <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">
+                                    <i class="bi bi-hdd-stack"></i> Semua AP Aktif
+                                </span>
+                            {% elif s.target_type == 'group' %}
+                                <span class="badge" style="background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25);">
+                                    <i class="bi bi-folder"></i> Grup: {{ s.target_payload }}
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-check2-square"></i> Pilihan Khusus
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-secondary font-mono">
+                            {% if s.last_run %}
+                                {{ s.last_run.strftime('%d/%m/%Y %H:%M') }}
+                            {% else %}
+                                <span class="text-muted">Belum pernah</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="d-inline-flex gap-1">
+                                <button class="btn btn-sm btn-modern-outline text-info" title="Test Run Jadwal Sekarang" onclick="runScheduleNow({{ s.id }}, '{{ s.name }}')">
+                                    <i class="bi bi-play-fill fs-6"></i> Test Run
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline text-danger" title="Hapus Jadwal" onclick="deleteSchedule({{ s.id }}, '{{ s.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-secondary">
+                            Belum ada jadwal reboot otomatis yang aktif. Klik tombol <b>"Tambah Jadwal Baru"</b> untuk mengatur jadwal.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: Tambah Jadwal -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleAddSchedule(event)">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                            <i class="bi bi-alarm fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Tambah Jadwal Baru</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Nama Jadwal <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" placeholder="Contoh: Reboot Harian Subuh" required>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold text-secondary">Jam (00 - 23)</label>
+                            <input type="number" name="hour" min="0" max="23" value="3" class="form-control font-mono" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-semibold text-secondary">Menit (00 - 59)</label>
+                            <input type="number" name="minute" min="0" max="59" value="0" class="form-control font-mono" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Frekuensi Hari</label>
+                        <select name="days_of_week" class="form-select">
+                            <option value="*">Setiap Hari (Senin - Minggu)</option>
+                            <option value="mon,tue,wed,thu,fri">Hari Kerja (Senin - Jumat)</option>
+                            <option value="sat,sun">Akhir Pekan (Sabtu - Minggu)</option>
+                            <option value="sun">Setiap Hari Minggu</option>
+                            <option value="mon">Setiap Hari Senin</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Target AP</label>
+                        <select name="target_type" id="targetTypeSelect" class="form-select" onchange="handleTargetTypeChange(this.value)">
+                            <option value="all">Semua AP Aktif</option>
+                            <option value="group">Grup Tertentu</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 d-none" id="groupSelectContainer">
+                        <label class="form-label small fw-semibold text-secondary">Pilih Grup</label>
+                        <select name="target_group" class="form-select">
+                            {% for g in groups %}
+                                <option value="{{ g }}">{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary">Simpan Jadwal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function handleTargetTypeChange(val) {
+    const groupCont = document.getElementById('groupSelectContainer');
+    if (val === 'group') {
+        groupCont.classList.remove('d-none');
+    } else {
+        groupCont.classList.add('d-none');
+    }
+}
+
+async function handleAddSchedule(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const data = {
+        name: formData.get('name'),
+        hour: parseInt(formData.get('hour')),
+        minute: parseInt(formData.get('minute')),
+        days_of_week: formData.get('days_of_week'),
+        target_type: formData.get('target_type'),
+        target_payload: formData.get('target_type') === 'group' ? formData.get('target_group') : ''
+    };
+
+    try {
+        const res = await fetch('/api/schedules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.status === 'success') {
+            CustomSwal.fire('Berhasil!', result.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', result.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+async function toggleSchedule(id, enabled) {
+    try {
+        const res = await fetch(`/api/schedules/${id}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_enabled: enabled })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const toast = CustomSwal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 2000
+            });
+            toast.fire({ icon: 'success', title: data.message });
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', 'Gagal memperbarui jadwal', 'error');
+    }
+}
+
+async function deleteSchedule(id, name) {
+    const confirm = await CustomSwal.fire({
+        title: `Hapus jadwal '${name}'?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'Ya, Hapus',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        try {
+            const res = await fetch(`/api/schedules/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.status === 'success') {
+                CustomSwal.fire('Terhapus!', result.message, 'success').then(() => location.reload());
+            } else {
+                CustomSwal.fire('Gagal!', result.message, 'error');
+            }
+        } catch (err) {
+            CustomSwal.fire('Error', 'Gagal menghapus jadwal: ' + err, 'error');
+        }
+    }
+}
+
+async function runScheduleNow(id, name) {
+    const confirm = await CustomSwal.fire({
+        title: `Eksekusi '${name}' Sekarang?`,
+        text: 'Ini akan langsung mengirimkan perintah SSH reboot ke seluruh AP target di dalam jadwal ini.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#6366f1',
+        confirmButtonText: 'Ya, Jalankan!',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        CustomSwal.fire({
+            title: 'Executing Schedule...',
+            text: 'Mengirim perintah SSH multi-threading...',
+            allowOutsideClick: false,
+            didOpen: () => { CustomSwal.showLoading(); }
+        });
+
+        try {
+            const res = await fetch(`/api/schedules/${id}/run-now`, { method: 'POST' });
+            const data = await res.json();
+            CustomSwal.fire('Selesai!', data.message, 'info').then(() => location.reload());
+        } catch (err) {
+            CustomSwal.fire('Error', 'Gagal mengeksekusi jadwal: ' + err, 'error');
+        }
+    }
+}
+</script>
+{% endblock %}

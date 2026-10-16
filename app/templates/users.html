@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}Manajemen Pengguna & Akses Site - OTO REBOOT{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start align-items-md-center flex-column flex-md-row gap-3 mb-4">
+    <div>
+        <h2 class="fw-extrabold mb-1 tracking-tight" style="font-weight: 800; letter-spacing: -0.03em;">
+            Manajemen Pengguna & Hak Akses Site
+        </h2>
+        <p class="text-secondary mb-0 small">
+            Kelola akun operator, role permission, dan batasan hak akses per <b>Site / Fakultas</b>.
+        </p>
+    </div>
+    <div>
+        <button class="btn btn-modern-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="bi bi-person-plus-fill"></i> Tambah Pengguna Baru
+        </button>
+    </div>
+</div>
+
+<!-- Tabel Pengguna -->
+<div class="glass-card">
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Pengguna</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Hak Akses Site / Fakultas</th>
+                    <th>Status</th>
+                    <th>Dibuat Pada</th>
+                    <th class="text-end pe-4">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if users %}
+                    {% for u in users %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="p-2 rounded-circle" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;">
+                                    <i class="bi bi-person-fill"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-light">{{ u.full_name }}</div>
+                                    <div class="text-secondary font-mono" style="font-size: 0.72rem;">ID: #USR-{{ u.id }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-dark border border-secondary border-opacity-25 font-mono text-light py-1 px-2">
+                                {{ u.username }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if u.role == 'superadmin' %}
+                                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">
+                                    <i class="bi bi-shield-shaded me-1"></i>Super Administrator
+                                </span>
+                            {% else %}
+                                <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);">
+                                    <i class="bi bi-person-badge me-1"></i>Site Operator
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.allowed_sites == '*' %}
+                                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">
+                                    <i class="bi bi-globe me-1"></i>Semua Site (*)
+                                </span>
+                            {% else %}
+                                {% for s in u.allowed_sites.split(',') %}
+                                    <span class="badge me-1" style="background: rgba(99, 102, 241, 0.12); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.25);">
+                                        <i class="bi bi-building me-1"></i>{{ s.strip() }}
+                                    </span>
+                                {% endfor %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.is_active %}
+                                <span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25">Aktif</span>
+                            {% else %}
+                                <span class="badge bg-danger bg-opacity-20 text-danger border border-danger border-opacity-25">Nonaktif</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-secondary font-mono">
+                            {{ u.created_at }}
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="d-inline-flex gap-1">
+                                <button class="btn btn-sm btn-modern-outline text-warning" title="Ganti Password" onclick='openPasswordModal({{ u|tojson }})'>
+                                    <i class="bi bi-key"></i>
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline text-primary" title="Edit & Rename User" onclick='openEditUserModal({{ u|tojson }})'>
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                {% if current_user.id != u.id %}
+                                    <button class="btn btn-sm btn-modern-outline text-danger" title="Hapus User" onclick="deleteUser({{ u.id }}, '{{ u.username }}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: Tambah User Baru -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleAddUser(event)">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                            <i class="bi bi-person-plus fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Tambah Pengguna Baru</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Username <span class="text-danger">*</span></label>
+                        <input type="text" name="username" class="form-control font-mono" placeholder="misal: admin_fasilkom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Nama Lengkap <span class="text-danger">*</span></label>
+                        <input type="text" name="full_name" class="form-control" placeholder="misal: Operator TI Fasilkom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Password <span class="text-danger">*</span></label>
+                        <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Role Permission</label>
+                        <select name="role" id="addRoleSelect" class="form-select" onchange="toggleSiteSelector('addRoleSelect', 'addSiteGroup')">
+                            <option value="site_admin">Site Operator (Hanya Site Tertentu)</option>
+                            <option value="superadmin">Super Administrator (Akses Penuh)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="addSiteGroup">
+                        <label class="form-label small fw-semibold text-secondary">Beri Akses ke Site / Fakultas</label>
+                        <p class="small text-secondary mb-2" style="font-size: 0.75rem;">Pilih fakultas yang sudah ada atau buat site baru (kosongan):</p>
+                        <div class="p-3 rounded-3 mb-2" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); max-height: 140px; overflow-y: auto;">
+                            {% for s in all_sites %}
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input add-site-check" type="checkbox" value="{{ s }}" id="site_add_{{ loop.index }}">
+                                    <label class="form-check-label small" for="site_add_{{ loop.index }}">{{ s }}</label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-transparent border-secondary border-opacity-25 text-secondary small">Atau Site Baru</span>
+                            <input type="text" id="add_custom_site" class="form-control" placeholder="Contoh: Site Mandiri (Kosong)">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary">Simpan Pengguna</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Edit & Rename User -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleEditUser(event)">
+                <input type="hidden" id="edit_user_id">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                            <i class="bi bi-pencil-square fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Edit & Rename Pengguna</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Username (Rename) <span class="text-danger">*</span></label>
+                        <input type="text" id="edit_username" class="form-control font-mono" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Nama Lengkap <span class="text-danger">*</span></label>
+                        <input type="text" id="edit_full_name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Role Permission</label>
+                        <select id="edit_role" class="form-select" onchange="toggleSiteSelector('edit_role', 'editSiteGroup')">
+                            <option value="site_admin">Site Operator (Hanya Site Tertentu)</option>
+                            <option value="superadmin">Super Administrator (Akses Penuh)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="editSiteGroup">
+                        <label class="form-label small fw-semibold text-secondary">Beri Akses ke Site / Fakultas</label>
+                        <div class="p-3 rounded-3 mb-2" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle); max-height: 140px; overflow-y: auto;">
+                            {% for s in all_sites %}
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input edit-site-check" type="checkbox" value="{{ s }}" id="site_edit_{{ loop.index }}">
+                                    <label class="form-check-label small" for="site_edit_{{ loop.index }}">{{ s }}</label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-transparent border-secondary border-opacity-25 text-secondary small">Atau Site Tambahan</span>
+                            <input type="text" id="edit_custom_site" class="form-control" placeholder="Ketik nama site tambahan jika ada">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Ganti Password -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleChangePassword(event)">
+                <input type="hidden" id="pwd_user_id">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                            <i class="bi bi-key-fill fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Ganti Password Pengguna</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="small text-secondary mb-3">Mengganti password untuk akun: <b class="text-light font-mono" id="pwd_target_username"></b></p>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Password Baru <span class="text-danger">*</span></label>
+                        <input type="password" id="new_user_password" class="form-control" placeholder="••••••••" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                        Ganti Password
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function toggleSiteSelector(roleSelectId, siteGroupId) {
+    const roleVal = document.getElementById(roleSelectId).value;
+    const siteGroup = document.getElementById(siteGroupId);
+    if (roleVal === 'superadmin') {
+        siteGroup.classList.add('d-none');
+    } else {
+        siteGroup.classList.remove('d-none');
+    }
+}
+
+async function handleAddUser(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const role = formData.get('role');
+    
+    let allowedSites = '*';
+    if (role !== 'superadmin') {
+        const checked = Array.from(document.querySelectorAll('.add-site-check:checked')).map(cb => cb.value);
+        const customSite = (document.getElementById('add_custom_site').value || '').trim();
+        if (customSite) {
+            checked.push(customSite);
+        }
+        if (checked.length === 0) {
+            CustomSwal.fire('Pilih Site', 'Pilih minimal satu site atau ketik nama site baru (kosongan)', 'warning');
+            return;
+        }
+        allowedSites = checked.join(', ');
+    }
+
+    const payload = {
+        username: formData.get('username'),
+        full_name: formData.get('full_name'),
+        password: formData.get('password'),
+        role: role,
+        allowed_sites: allowedSites
+    };
+
+    try {
+        const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            CustomSwal.fire('Berhasil!', data.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', data.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+function openEditUserModal(user) {
+    document.getElementById('edit_user_id').value = user.id;
+    document.getElementById('edit_username').value = user.username;
+    document.getElementById('edit_full_name').value = user.full_name;
+    document.getElementById('edit_role').value = user.role;
+    if (document.getElementById('edit_custom_site')) {
+        document.getElementById('edit_custom_site').value = '';
+    }
+
+    toggleSiteSelector('edit_role', 'editSiteGroup');
+
+    // Set checkboxes
+    const allowed = (user.allowed_sites || '').split(',').map(s => s.trim());
+    document.querySelectorAll('.edit-site-check').forEach(cb => {
+        cb.checked = user.allowed_sites === '*' || allowed.includes(cb.value);
+    });
+
+    new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+async function handleEditUser(event) {
+    event.preventDefault();
+    const userId = document.getElementById('edit_user_id').value;
+    const role = document.getElementById('edit_role').value;
+
+    let allowedSites = '*';
+    if (role !== 'superadmin') {
+        const checked = Array.from(document.querySelectorAll('.edit-site-check:checked')).map(cb => cb.value);
+        const customSite = (document.getElementById('edit_custom_site').value || '').trim();
+        if (customSite) {
+            checked.push(customSite);
+        }
+        if (checked.length === 0) {
+            CustomSwal.fire('Pilih Site', 'Pilih minimal satu site atau ketik nama site baru', 'warning');
+            return;
+        }
+        allowedSites = checked.join(', ');
+    }
+
+    const payload = {
+        username: document.getElementById('edit_username').value,
+        full_name: document.getElementById('edit_full_name').value,
+        role: role,
+        allowed_sites: allowedSites
+    };
+
+    try {
+        const res = await fetch(`/api/users/${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            CustomSwal.fire('Berhasil!', data.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', data.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+function openPasswordModal(user) {
+    document.getElementById('pwd_user_id').value = user.id;
+    document.getElementById('pwd_target_username').textContent = user.username;
+    document.getElementById('new_user_password').value = '';
+    new bootstrap.Modal(document.getElementById('changePasswordModal')).show();
+}
+
+async function handleChangePassword(event) {
+    event.preventDefault();
+    const userId = document.getElementById('pwd_user_id').value;
+    const newPassword = document.getElementById('new_user_password').value;
+
+    try {
+        const res = await fetch(`/api/users/${userId}/change-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: newPassword })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            CustomSwal.fire('Tersimpan!', data.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', data.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+async function deleteUser(userId, username) {
+    const confirm = await CustomSwal.fire({
+        title: `Hapus User ${username}?`,
+        text: 'User ini tidak akan dapat login lagi ke OTO REBOOT.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'Ya, Hapus',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        try {
+            const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                CustomSwal.fire('Terhapus!', data.message, 'success').then(() => location.reload());
+            } else {
+                CustomSwal.fire('Gagal!', data.message, 'error');
+            }
+        } catch (err) {
+            CustomSwal.fire('Error', String(err), 'error');
+        }
+    }
+}
+</script>
+{% endblock %}

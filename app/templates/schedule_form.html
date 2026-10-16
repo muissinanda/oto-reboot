@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Tambah' if mode == 'add' else 'Edit' }} Jadwal Reboot{% endblock %}
+
+{% block page_title %}
+    <i class="fas fa-calendar-plus"></i> {{ 'Tambah Jadwal Baru' if mode == 'add' else 'Ubah Jadwal: ' ~ schedule.name }}
+{% endblock %}
+
+{% block topbar_actions %}
+    <a href="{{ url_for('schedules.index') }}" class="btn btn-outline-custom">
+        <i class="fas fa-arrow-left"></i>
+        <span>Kembali ke Daftar</span>
+    </a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-10">
+        <form method="POST" action="{{ url_for('schedules.add') if mode == 'add' else url_for('schedules.edit', schedule_id=schedule.id) }}">
+            <!-- Card 1: Informasi Dasar & Tipe Jadwal -->
+            <div class="custom-card mb-4">
+                <div class="card-header">
+                    <h5 class="card-title">
+                        <i class="fas fa-clock"></i> Konfigurasi Waktu & Informasi Jadwal
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Nama & Deskripsi -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-6">
+                            <label for="schedName" class="form-label">Nama Jadwal <span class="text-danger">*</span></label>
+                            <input type="text" name="name" id="schedName" class="form-control" 
+                                   placeholder="Contoh: Reboot Harian Subuh AP Office" 
+                                   value="{{ schedule.name if schedule else '' }}" required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="schedDesc" class="form-label">Deskripsi / Catatan</label>
+                            <input type="text" name="description" id="schedDesc" class="form-control" 
+                                   placeholder="Opsional: Keterangan tujuan reboot berkala..." 
+                                   value="{{ schedule.description if schedule and schedule.description else '' }}">
+                        </div>
+                    </div>
+
+                    <!-- Pilihan Tipe Jadwal -->
+                    <div class="mb-4">
+                        <label class="form-label d-block">Tipe Perulangan Jadwal <span class="text-danger">*</span></label>
+                        <div class="d-flex flex-wrap gap-4 pt-1">
+                            {% set current_type = schedule.schedule_type if schedule else 'daily' %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="schedule_type" id="typeDaily" value="daily" 
+                                       {% if current_type == 'daily' %}checked{% endif %}>
+                                <label class="form-check-label text-light fw-medium" for="typeDaily">
+                                    <i class="fas fa-sun text-warning me-1"></i> Harian (Daily)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="schedule_type" id="typeWeekly" value="weekly" 
+                                       {% if current_type == 'weekly' %}checked{% endif %}>
+                                <label class="form-check-label text-light fw-medium" for="typeWeekly">
+                                    <i class="fas fa-calendar-week text-purple me-1" style="color: var(--accent-purple);"></i> Mingguan (Weekly)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="schedule_type" id="typeCron" value="cron" 
+                                       {% if current_type == 'cron' %}checked{% endif %}>
+                                <label class="form-check-label text-light fw-medium" for="typeCron">
+                                    <i class="fas fa-terminal text-info me-1"></i> Kustom Cron Expression
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Conditional Fields 1: Daily -->
+                    <div id="dailyFields" class="p-3 rounded-3 mb-3 {% if current_type != 'daily' %}d-none{% endif %}" style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
+                        <label class="form-label fw-semibold text-light mb-2">Waktu Eksekusi Setiap Hari</label>
+                        <div class="row g-2 align-items-center" style="max-width: 300px;">
+                            <div class="col-6">
+                                <label for="dailyHour" class="small text-muted mb-1">Jam (00 - 23)</label>
+                                <select name="hour" id="dailyHour" class="form-select font-mono">
+                                    {% for h in range(24) %}
+                                        <option value="{{ h }}" {% if schedule and schedule.hour == h %}selected{% elif not schedule and h == 3 %}selected{% endif %}>
+                                            {{ '%02d' % h }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label for="dailyMinute" class="small text-muted mb-1">Menit (00 - 59)</label>
+                                <select name="minute" id="dailyMinute" class="form-select font-mono">
+                                    {% for m in range(0, 60, 5) %}
+                                        <option value="{{ m }}" {% if schedule and schedule.minute == m %}selected{% elif not schedule and m == 0 %}selected{% endif %}>
+                                            {{ '%02d' % m }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-text text-muted mt-2">Perangkat AP akan direboot otomatis pada jam yang dipilih setiap hari.</div>
+                    </div>
+
+                    <!-- Conditional Fields 2: Weekly -->
+                    <div id="weeklyFields" class="p-3 rounded-3 mb-3 {% if current_type != 'weekly' %}d-none{% endif %}" style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
+                        <label class="form-label fw-semibold text-light mb-2">Pilih Hari & Waktu Eksekusi</label>
+                        <div class="d-flex flex-wrap gap-3 mb-3">
+                            {% set selected_dows = (schedule.day_of_week or '').lower().split(',') if schedule else ['sun'] %}
+                            {% set days = [
+                                ('mon', 'Senin (Mon)'),
+                                ('tue', 'Selasa (Tue)'),
+                                ('wed', 'Rabu (Wed)'),
+                                ('thu', 'Kamis (Thu)'),
+                                ('fri', 'Jumat (Fri)'),
+                                ('sat', 'Sabtu (Sat)'),
+                                ('sun', 'Minggu (Sun)')
+                            ] %}
+                            {% for d_val, d_name in days %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="day_of_week[]" 
+                                           id="dow_{{ d_val }}" value="{{ d_val }}"
+                                           {% if d_val in selected_dows %}checked{% endif %}>
+                                    <label class="form-check-label small text-light" for="dow_{{ d_val }}">{{ d_name }}</label>
+                                </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="row g-2 align-items-center" style="max-width: 300px;">
+                            <div class="col-6">
+                                <label for="weeklyHour" class="small text-muted mb-1">Jam (00 - 23)</label>
+                                <select name="hour" id="weeklyHour" class="form-select font-mono">
+                                    {% for h in range(24) %}
+                                        <option value="{{ h }}" {% if schedule and schedule.hour == h %}selected{% elif not schedule and h == 3 %}selected{% endif %}>
+                                            {{ '%02d' % h }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label for="weeklyMinute" class="small text-muted mb-1">Menit (00 - 59)</label>
+                                <select name="minute" id="weeklyMinute" class="form-select font-mono">
+                                    {% for m in range(0, 60, 5) %}
+                                        <option value="{{ m }}" {% if schedule and schedule.minute == m %}selected{% elif not schedule and m == 0 %}selected{% endif %}>
+                                            {{ '%02d' % m }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Conditional Fields 3: Cron -->
+                    <div id="cronFields" class="p-3 rounded-3 mb-3 {% if current_type != 'cron' %}d-none{% endif %}" style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
+                        <label for="cronExpression" class="form-label fw-semibold text-light mb-1">Format Cron Expression</label>
+                        <input type="text" name="cron_expression" id="cronExpression" class="form-control font-mono" 
+                               placeholder="Contoh: 0 3 * * 0 (Setiap Minggu jam 03:00)"
+                               value="{{ schedule.cron_expression if schedule and schedule.cron_expression else '' }}">
+                        <div class="form-text text-muted mt-2">
+                            Format standar APScheduler Cron: <code>menit jam hari-dalam-bulan bulan hari-dalam-minggu</code>.
+                            Contoh: <code>*/30 2-4 * * *</code> (Setiap 30 menit antara jam 2-4 pagi).
+                        </div>
+                    </div>
+
+                    <!-- Status Aktif Checkbox -->
+                    <div class="form-check form-switch mt-3">
+                        <input class="form-check-input" type="checkbox" name="is_active" id="isActiveSwitch" value="1"
+                               {% if not schedule or schedule.is_active %}checked{% endif %}>
+                        <label class="form-check-label text-light fw-medium" for="isActiveSwitch">
+                            Aktifkan Jadwal Ini Sekarang
+                        </label>
+                        <div class="form-text text-muted small">Jadwal yang nonaktif tidak akan dieksekusi secara otomatis oleh background worker.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: Pemilihan Access Point (Grouped by Controller) -->
+            <div class="custom-card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title">
+                        <i class="fas fa-wifi"></i> Pilih Access Point Target
+                    </h5>
+                    <span class="text-muted small">Centang AP yang akan direboot sesuai jadwal ini</span>
+                </div>
+                <div class="card-body">
+                    {% if controllers %}
+                        {% for ctrl in controllers %}
+                            {% set ctrl_aps = aps|selectattr('controller_id', 'equalto', ctrl.id)|list %}
+                            <div class="mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="fas fa-server text-info"></i>
+                                        <strong class="text-light">{{ ctrl.name }}</strong>
+                                        <span class="badge bg-secondary font-mono">{{ ctrl_aps|length }} APs</span>
+                                    </div>
+                                    {% if ctrl_aps %}
+                                        <div class="form-check">
+                                            <input class="form-check-input group-select-all" type="checkbox" 
+                                                   id="groupSelectAll_{{ ctrl.id }}" 
+                                                   data-group="ctrl_{{ ctrl.id }}">
+                                            <label class="form-check-label small text-muted" for="groupSelectAll_{{ ctrl.id }}">
+                                                Pilih Semua AP Controller Ini
+                                            </label>
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                {% if ctrl_aps %}
+                                    <div class="row g-2 ps-3">
+                                        {% for ap in ctrl_aps %}
+                                            <div class="col-12 col-md-6 col-lg-4">
+                                                <div class="p-2 rounded border border-secondary border-opacity-25" style="background-color: rgba(255, 255, 255, 0.015);">
+                                                    <div class="form-check mb-0">
+                                                        <input class="form-check-input schedule-ap-item" type="checkbox" 
+                                                               name="selected_aps[]" 
+                                                               id="apCheck_{{ ap.id }}" 
+                                                               value="{{ ap.id }}"
+                                                               data-group="ctrl_{{ ctrl.id }}"
+                                                               {% if ap.id in selected_ap_ids %}checked{% endif %}>
+                                                        <label class="form-check-label d-block" for="apCheck_{{ ap.id }}">
+                                                            <div class="fw-semibold text-light small">{{ ap.name }}</div>
+                                                            <div class="font-mono text-muted" style="font-size: 0.75rem;">{{ ap.ip_address }}</div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <div class="text-muted small ps-3">
+                                        <i class="fas fa-info-circle me-1"></i> Tidak ada AP yang terdaftar di controller ini.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-warning mb-0">
+                            <i class="fas fa-triangle-exclamation me-1"></i> Belum ada Controller yang terdaftar. Tambahkan Controller dan AP terlebih dahulu sebelum membuat jadwal.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="d-flex justify-content-end gap-2 mb-5">
+                <a href="{{ url_for('schedules.index') }}" class="btn btn-outline-custom">
+                    Batal
+                </a>
+                <button type="submit" class="btn btn-primary px-4">
+                    <i class="fas fa-check me-1"></i> {{ 'Simpan Jadwal' if mode == 'add' else 'Perbarui Jadwal' }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

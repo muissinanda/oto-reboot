@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Controllers{% endblock %}
+
+{% block page_title %}
+    <i class="fas fa-server"></i> Manajemen Controllers
+{% endblock %}
+
+{% block topbar_actions %}
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addControllerModal">
+        <i class="fas fa-plus"></i>
+        <span>Tambah Controller</span>
+    </button>
+{% endblock %}
+
+{% block content %}
+<!-- Controllers Table Card -->
+<div class="custom-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title">
+            <i class="fas fa-server"></i> Daftar Controller Jaringan
+        </h5>
+        <span class="badge bg-secondary font-mono">{{ controllers|length }} Controllers</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table custom-table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Nama Controller</th>
+                        <th>Deskripsi</th>
+                        <th>SSH Username</th>
+                        <th>Jumlah AP</th>
+                        <th>Dibuat Pada</th>
+                        <th class="text-end">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if controllers %}
+                        {% for ctrl in controllers %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="stat-icon-wrapper" style="width: 32px; height: 32px; font-size: 0.9rem; background: rgba(88, 166, 255, 0.1); color: var(--accent-blue); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;">
+                                            <i class="fas fa-network-wired"></i>
+                                        </div>
+                                        <span class="fw-semibold text-light">{{ ctrl.name }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="text-muted">{{ ctrl.description or '-' }}</span>
+                                </td>
+                                <td>
+                                    <span class="font-mono text-light">
+                                        <i class="fas fa-user-shield me-1 text-muted small"></i>{{ ctrl.ssh_username }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% set count = ctrl.ap_count if ctrl.ap_count is defined else (ctrl.access_points|length) %}
+                                    <a href="{{ url_for('access_points.index', controller_id=ctrl.id) }}" class="badge bg-dark border border-secondary text-info text-decoration-none" title="Lihat AP pada controller ini">
+                                        <i class="fas fa-wifi me-1"></i>{{ count }} APs
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="text-muted small">
+                                        {{ ctrl.created_at.strftime('%d %b %Y %H:%M') if ctrl.created_at else '-' }}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-inline-flex gap-1">
+                                        <!-- Edit Modal Trigger -->
+                                        <button type="button" class="btn btn-outline-custom btn-sm-action"
+                                                title="Edit Controller"
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#editControllerModal"
+                                                data-id="{{ ctrl.id }}"
+                                                data-name="{{ ctrl.name }}"
+                                                data-description="{{ ctrl.description or '' }}"
+                                                data-ssh-username="{{ ctrl.ssh_username }}">
+                                            <i class="fas fa-pen-to-square"></i> Edit
+                                        </button>
+
+                                        <!-- Delete Form -->
+                                        <form method="POST" action="{{ url_for('controllers.delete', ctrl_id=ctrl.id) }}" class="d-inline">
+                                            <button type="submit" class="btn btn-outline-custom btn-sm-action text-danger"
+                                                    title="Hapus Controller"
+                                                    data-confirm="Apakah Anda yakin ingin menghapus Controller '{{ ctrl.name }}'?">
+                                                <i class="fas fa-trash-can"></i> Hapus
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                <i class="fas fa-info-circle me-1"></i> Belum ada Controller yang ditambahkan. 
+                                Silakan tambahkan Controller untuk mengelola kredensial SSH.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Tambah Controller Baru -->
+<div class="modal fade" id="addControllerModal" tabindex="-1" aria-labelledby="addControllerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('controllers.add') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addControllerModalLabel">
+                        <i class="fas fa-plus text-primary me-2"></i>Tambah Controller Baru
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="ctrlName" class="form-label">Nama Controller <span class="text-danger">*</span></label>
+                        <input type="text" name="name" id="ctrlName" class="form-control" placeholder="Contoh: UniFi Controller Utama" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ctrlDesc" class="form-label">Deskripsi</label>
+                        <textarea name="description" id="ctrlDesc" class="form-control" rows="2" placeholder="Catatan lokasi atau site..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ctrlSshUser" class="form-label">SSH Username <span class="text-danger">*</span></label>
+                        <input type="text" name="ssh_username" id="ctrlSshUser" class="form-control font-mono" placeholder="ubnt" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ctrlSshPass" class="form-label">SSH Password <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="password" name="ssh_password" id="ctrlSshPass" class="form-control font-mono" placeholder="Password SSH AP" required>
+                            <button type="button" class="btn btn-outline-custom password-toggle-btn" data-target="ctrlSshPass" title="Lihat/Sembunyikan Password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <div class="form-text text-muted">Password ini digunakan untuk login SSH saat mengeksekusi reboot AP.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> Simpan Controller
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edit Controller -->
+<div class="modal fade" id="editControllerModal" tabindex="-1" aria-labelledby="editControllerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editControllerModalLabel">
+                        <i class="fas fa-pen-to-square text-primary me-2"></i>Edit Controller
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editCtrlName" class="form-label">Nama Controller <span class="text-danger">*</span></label>
+                        <input type="text" name="name" id="editCtrlName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCtrlDesc" class="form-label">Deskripsi</label>
+                        <textarea name="description" id="editCtrlDesc" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCtrlSshUser" class="form-label">SSH Username <span class="text-danger">*</span></label>
+                        <input type="text" name="ssh_username" id="editCtrlSshUser" class="form-control font-mono" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCtrlSshPass" class="form-label">SSH Password</label>
+                        <div class="input-group">
+                            <input type="password" name="ssh_password" id="editCtrlSshPass" class="form-control font-mono" placeholder="Biarkan kosong jika tidak ingin mengubah">
+                            <button type="button" class="btn btn-outline-custom password-toggle-btn" data-target="editCtrlSshPass" title="Lihat/Sembunyikan Password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <div class="form-text text-muted">Isi hanya bila Anda ingin memperbarui password SSH.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Perbarui Controller
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

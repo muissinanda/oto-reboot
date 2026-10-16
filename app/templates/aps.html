@@ -1,0 +1,770 @@
+{% extends "base.html" %}
+
+{% block title %}Manajemen Access Point per Site - OTO REBOOT{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start align-items-md-center flex-column flex-md-row gap-3 mb-4">
+    <div>
+        <h2 class="fw-extrabold mb-1 tracking-tight" style="font-weight: 800; letter-spacing: -0.03em;">
+            Manajemen Access Point
+        </h2>
+        <p class="text-secondary mb-0 small">
+            Manajemen perangkat per <b>Site / Fakultas</b> dengan dukungan dual-engine: <b>UniFi</b> & <b>Ruckus (rkscli)</b>.
+        </p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button class="btn btn-modern-outline text-warning border-warning border-opacity-25" onclick="rebootSelectedAPs()">
+            <i class="bi bi-arrow-repeat"></i> Reboot Terpilih (<span id="selectedCount" class="font-mono">0</span>)
+        </button>
+        <button class="btn btn-modern-outline" data-bs-toggle="modal" data-bs-target="#bulkImportModal">
+            <i class="bi bi-cloud-arrow-up"></i> Bulk Import
+        </button>
+        <button class="btn btn-modern-primary" data-bs-toggle="modal" data-bs-target="#addApModal">
+            <i class="bi bi-plus-lg"></i> Tambah AP Baru
+        </button>
+    </div>
+</div>
+
+<!-- SITE / FAKULTAS TAB NAVIGATION -->
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap" id="siteTabs">
+        <button class="btn btn-sm btn-modern-primary site-tab-btn active" data-site="" onclick="selectSiteTab('', this)">
+            <i class="bi bi-buildings me-1"></i> Semua Site 
+            <span class="badge bg-light bg-opacity-20 ms-1 font-mono">{{ aps|length }}</span>
+        </button>
+
+        {% for s in sites %}
+            <button class="btn btn-sm btn-modern-outline site-tab-btn" data-site="{{ s }}" onclick="selectSiteTab('{{ s }}', this)">
+                <i class="bi bi-building me-1 text-info"></i> {{ s }}
+                <span class="badge bg-secondary bg-opacity-50 ms-1 font-mono">{{ site_counts[s] }}</span>
+            </button>
+        {% endfor %}
+    </div>
+
+    <!-- Quick action reboot current active site -->
+    <div id="siteActionBox" class="d-none">
+        <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-2" onclick="rebootCurrentSite()">
+            <i class="bi bi-power"></i> Reboot Semua AP di <span id="currentSiteLabel" class="fw-bold"></span>
+        </button>
+    </div>
+</div>
+
+<!-- Modern Filter Bar -->
+<div class="glass-card p-3 mb-4">
+    <div class="row g-2 align-items-center">
+        <div class="col-12 col-md-4">
+            <div class="input-group">
+                <span class="input-group-text bg-transparent border-end-0 border-secondary border-opacity-25 text-secondary">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" id="searchInput" class="form-control border-start-0" placeholder="Ketik nama AP atau IP..." onkeyup="filterTable()">
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <select id="vendorFilter" class="form-select" onchange="filterTable()">
+                <option value="">Semua Vendor (UniFi & Ruckus)</option>
+                <option value="unifi">UniFi / Linux</option>
+                <option value="ruckus">Ruckus (rkscli)</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <select id="statusFilter" class="form-select" onchange="filterTable()">
+                <option value="">Semua Status</option>
+                <option value="ONLINE">ONLINE</option>
+                <option value="OFFLINE">OFFLINE</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-2 text-md-end text-secondary small">
+            Menampilkan: <b id="countText" class="text-light font-mono">{{ aps|length }}</b> AP
+        </div>
+    </div>
+</div>
+
+<!-- Table Container -->
+<div class="glass-card">
+    <div class="table-responsive">
+        <table class="table" id="apTable">
+            <thead>
+                <tr>
+                    <th width="48" class="text-center">
+                        <input type="checkbox" class="form-check-input" id="checkAll" onclick="toggleSelectAll(this)">
+                    </th>
+                    <th>Status</th>
+                    <th>Nama Access Point</th>
+                    <th>IP Address</th>
+                    <th>Tipe / Vendor</th>
+                    <th>Fakultas / Site</th>
+                    <th>Sub-Grup</th>
+                    <th>Latency</th>
+                    <th>Terakhir Reboot</th>
+                    <th class="text-end pe-4">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if aps %}
+                    {% for ap in aps %}
+                    <tr data-name="{{ ap.name|lower }}" 
+                        data-ip="{{ ap.ip }}" 
+                        data-vendor="{{ ap.device_type }}"
+                        data-site="{{ ap.site or 'Fasilkom' }}" 
+                        data-group="{{ ap.group or 'Default' }}" 
+                        data-status="{% if ap.is_online %}ONLINE{% else %}OFFLINE{% endif %}">
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input ap-check" value="{{ ap.id }}" onchange="updateSelectedCount()">
+                        </td>
+                        <td>
+                            {% if ap.is_online %}
+                                <span class="status-pill online">
+                                    <span class="pulse-dot online"></span> ONLINE
+                                </span>
+                            {% else %}
+                                <span class="status-pill offline">
+                                    <span class="pulse-dot offline"></span> OFFLINE
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="p-2 rounded-2" style="background: rgba(255, 255, 255, 0.04); color: #cbd5e1;">
+                                    {% if ap.device_type == 'ruckus' %}
+                                        <i class="bi bi-broadcast text-warning"></i>
+                                    {% else %}
+                                        <i class="bi bi-router text-info"></i>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-light">{{ ap.name }}</div>
+                                    {% if ap.username %}
+                                        <div class="text-secondary" style="font-size: 0.72rem;">User: {{ ap.username }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-inline-flex align-items-center gap-2">
+                                <span class="badge bg-dark border border-secondary border-opacity-25 font-mono text-light py-1 px-2">
+                                    {{ ap.ip }}
+                                </span>
+                                <button class="btn btn-link text-secondary p-0" title="Salin IP" onclick="copyToClipboard('{{ ap.ip }}')">
+                                    <i class="bi bi-copy" style="font-size: 0.8rem;"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td>
+                            {% if ap.device_type == 'ruckus' %}
+                                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">
+                                    <i class="bi bi-terminal me-1"></i>Ruckus
+                                </span>
+                            {% else %}
+                                <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);">
+                                    <i class="bi bi-cpu me-1"></i>UniFi
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge" style="background: rgba(99, 102, 241, 0.12); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.25);">
+                                <i class="bi bi-building me-1"></i>{{ ap.site or 'Fasilkom' }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1);">
+                                {{ ap.group or 'Default' }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if ap.latency_ms %}
+                                <span class="text-info font-mono small">{{ ap.latency_ms }} ms</span>
+                            {% else %}
+                                <span class="text-secondary small font-mono">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-secondary font-mono">
+                            {% if ap.last_rebooted %}
+                                {{ ap.last_rebooted.strftime('%d/%m/%Y %H:%M') }}
+                            {% else %}
+                                <span class="text-muted">Belum ada</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="d-inline-flex gap-1">
+                                <button class="btn btn-sm btn-modern-outline text-danger" title="Reboot Sekarang" onclick="rebootSingleAP({{ ap.id }}, '{{ ap.name }}')">
+                                    <i class="bi bi-power"></i>
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline text-primary" title="Edit & Rename AP" onclick='openEditModal({{ ap|tojson }})'>
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline text-secondary" title="Hapus AP" onclick="deleteAP({{ ap.id }}, '{{ ap.name }}', '{{ ap.ip }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr id="noDataRow">
+                        <td colspan="10" class="text-center py-5">
+                            <div class="py-4">
+                                <div class="mb-3">
+                                    <div class="d-inline-flex p-3 rounded-circle" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.25);">
+                                        <i class="bi bi-hdd-network fs-2"></i>
+                                    </div>
+                                </div>
+                                <h5 class="fw-bold text-light mb-1">Site ini Masih Kosongan</h5>
+                                <p class="text-secondary small mb-3">Belum ada Access Point yang terdaftar di site ini.<br>Silakan tambahkan IP Access Point Anda sendiri atau import sekaligus.</p>
+                                <div class="d-flex justify-content-center gap-2">
+                                    <button class="btn btn-sm btn-modern-primary" data-bs-toggle="modal" data-bs-target="#addApModal">
+                                        <i class="bi bi-plus-lg"></i> Tambah AP Baru
+                                    </button>
+                                    <button class="btn btn-sm btn-modern-outline" data-bs-toggle="modal" data-bs-target="#bulkImportModal">
+                                        <i class="bi bi-cloud-arrow-up"></i> Bulk Import
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: Tambah AP -->
+<div class="modal fade" id="addApModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleAddAP(event)">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                            <i class="bi bi-plus-lg fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Tambah Access Point</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Tipe / Vendor AP <span class="text-danger">*</span></label>
+                        <select name="device_type" class="form-select">
+                            <option value="unifi">UniFi / Generic Linux (SSH exec command)</option>
+                            <option value="ruckus">Ruckus AP (rkscli interactive shell)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Fakultas / Site <span class="text-danger">*</span></label>
+                        <input type="text" name="site" list="siteOptions" class="form-control" placeholder="Pilih atau ketik Fakultas..." value="{{ default_user_site }}" required>
+                        <datalist id="siteOptions">
+                            {% for s in sites %}
+                                <option value="{{ s }}">
+                            {% endfor %}
+                            {% if current_user.role == 'superadmin' %}
+                                <option value="Fasilkom">
+                                <option value="Fakultas Teknik">
+                                <option value="Fakultas Kedokteran">
+                                <option value="Fakultas Ekonomi dan Bisnis">
+                                <option value="Ruckus Zone">
+                                <option value="Rektorat">
+                            {% endif %}
+                        </datalist>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Nama Access Point <span class="text-danger">*</span></label>
+                        <input type="text" name="name" class="form-control" placeholder="Contoh: AP Ruckus Lt.2" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">IP Address <span class="text-danger">*</span></label>
+                        <input type="text" name="ip" class="form-control font-mono" placeholder="Contoh: 10.154.10.4" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Sub-Grup / Lantai</label>
+                        <input type="text" name="group" class="form-control" placeholder="Contoh: Lantai 2" value="Default">
+                    </div>
+                    
+                    <div class="p-3 rounded-3 mt-4" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle);">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-key text-warning"></i>
+                            <span class="small fw-semibold text-light">Custom SSH Credentials (Opsional)</span>
+                        </div>
+                        <p class="small text-secondary mb-3" style="font-size: 0.78rem;">Kosongkan jika ingin memakai user & password bawaan dari Pengaturan Global.</p>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="text" name="username" class="form-control form-control-sm" placeholder="Custom User">
+                            </div>
+                            <div class="col-6">
+                                <input type="password" name="password" class="form-control form-control-sm" placeholder="Custom Password">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary">Simpan AP</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Edit & Rename AP -->
+<div class="modal fade" id="editApModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleEditAP(event)">
+                <input type="hidden" id="edit_id" name="id">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                            <i class="bi bi-pencil-square fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Edit & Rename Access Point</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Tipe / Vendor AP <span class="text-danger">*</span></label>
+                        <select id="edit_device_type" name="device_type" class="form-select">
+                            <option value="unifi">UniFi / Generic Linux (SSH exec)</option>
+                            <option value="ruckus">Ruckus AP (rkscli shell)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Fakultas / Site <span class="text-danger">*</span></label>
+                        <input type="text" id="edit_site" name="site" list="siteOptionsEdit" class="form-control" required>
+                        <datalist id="siteOptionsEdit">
+                            {% for s in sites %}
+                                <option value="{{ s }}">
+                            {% endfor %}
+                            {% if current_user.role == 'superadmin' %}
+                                <option value="Fasilkom">
+                                <option value="Fakultas Teknik">
+                                <option value="Fakultas Kedokteran">
+                                <option value="Fakultas Ekonomi dan Bisnis">
+                                <option value="Ruckus Zone">
+                                <option value="Rektorat">
+                            {% endif %}
+                        </datalist>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Nama Access Point (Rename) <span class="text-danger">*</span></label>
+                        <input type="text" id="edit_name" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">IP Address <span class="text-danger">*</span></label>
+                        <input type="text" id="edit_ip" name="ip" class="form-control font-mono" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Sub-Grup / Lantai</label>
+                        <input type="text" id="edit_group" name="group" class="form-control">
+                    </div>
+
+                    <div class="p-3 rounded-3 mt-4" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle);">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bi bi-key text-warning"></i>
+                            <span class="small fw-semibold text-light">Custom SSH Credentials (Opsional)</span>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="text" id="edit_username" name="username" class="form-control form-control-sm" placeholder="Custom User">
+                            </div>
+                            <div class="col-6">
+                                <input type="password" id="edit_password" name="password" class="form-control form-control-sm" placeholder="Password baru (kosongkan jika tetap)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Bulk Import -->
+<div class="modal fade" id="bulkImportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <form onsubmit="handleBulkImport(event)">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-2 rounded-2" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee;">
+                            <i class="bi bi-cloud-arrow-up fs-5"></i>
+                        </div>
+                        <h5 class="modal-title fw-bold mb-0">Import Daftar Banyak IP</h5>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-secondary small mb-3">
+                        Tempelkan daftar IP AP di bawah ini (satu baris satu IP, atau format: <code>10.154.10.4, AP Ruang 101</code>).
+                    </p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-secondary">Tipe / Vendor AP <span class="text-danger">*</span></label>
+                            <select id="bulk_device_type" class="form-select">
+                                <option value="unifi">UniFi / Linux (exec)</option>
+                                <option value="ruckus">Ruckus (rkscli shell)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-secondary">Fakultas / Site Tujuan <span class="text-danger">*</span></label>
+                            <input type="text" id="bulk_site" list="siteOptionsBulk" class="form-control" value="{{ default_user_site }}" required>
+                            <datalist id="siteOptionsBulk">
+                                {% for s in sites %}
+                                    <option value="{{ s }}">
+                                {% endfor %}
+                                {% if current_user.role == 'superadmin' %}
+                                    <option value="Fasilkom">
+                                    <option value="Fakultas Teknik">
+                                    <option value="Ruckus Zone">
+                                {% endif %}
+                            </datalist>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-secondary">Sub-Grup Bawaan</label>
+                            <input type="text" id="bulk_group" class="form-control" value="Default">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-secondary">Daftar IP</label>
+                        <textarea id="bulk_ips" rows="9" class="form-control font-mono" placeholder="10.154.10.4&#10;10.154.10.6&#10;10.154.10.17"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary" style="background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);">
+                        Mulai Import
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let activeSiteFilter = '';
+
+function selectSiteTab(site, btn) {
+    activeSiteFilter = site;
+    
+    document.querySelectorAll('.site-tab-btn').forEach(b => {
+        b.classList.remove('btn-modern-primary', 'active');
+        b.classList.add('btn-modern-outline');
+    });
+    btn.classList.remove('btn-modern-outline');
+    btn.classList.add('btn-modern-primary', 'active');
+
+    const actionBox = document.getElementById('siteActionBox');
+    const siteLabel = document.getElementById('currentSiteLabel');
+    if (site) {
+        siteLabel.textContent = site;
+        actionBox.classList.remove('d-none');
+    } else {
+        actionBox.classList.add('d-none');
+    }
+
+    filterTable();
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        const toast = CustomSwal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 1500
+        });
+        toast.fire({ icon: 'success', title: `IP ${text} disalin!` });
+    });
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.ap-check:checked').length;
+    document.getElementById('selectedCount').textContent = count;
+}
+
+function toggleSelectAll(master) {
+    const checkboxes = document.querySelectorAll('.ap-check');
+    checkboxes.forEach(cb => {
+        if (cb.closest('tr').style.display !== 'none') {
+            cb.checked = master.checked;
+        }
+    });
+    updateSelectedCount();
+}
+
+function filterTable() {
+    const searchVal = document.getElementById('searchInput').value.toLowerCase();
+    const vendorVal = document.getElementById('vendorFilter').value;
+    const statusVal = document.getElementById('statusFilter').value;
+
+    const rows = document.querySelectorAll('#apTable tbody tr');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        if (row.id === 'noDataRow') return;
+        const name = row.getAttribute('data-name') || '';
+        const ip = row.getAttribute('data-ip') || '';
+        const vendor = row.getAttribute('data-vendor') || '';
+        const site = row.getAttribute('data-site') || '';
+        const status = row.getAttribute('data-status') || '';
+
+        const matchSite = !activeSiteFilter || site === activeSiteFilter;
+        const matchSearch = name.includes(searchVal) || ip.includes(searchVal);
+        const matchVendor = !vendorVal || vendor === vendorVal;
+        const matchStatus = !statusVal || status === statusVal;
+
+        if (matchSite && matchSearch && matchVendor && matchStatus) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    document.getElementById('countText').textContent = visibleCount;
+}
+
+async function rebootCurrentSite() {
+    if (!activeSiteFilter) return;
+
+    const confirm = await CustomSwal.fire({
+        title: `Reboot Seluruh AP di ${activeSiteFilter}?`,
+        text: `Semua AP (UniFi & Ruckus) pada Site ${activeSiteFilter} akan direboot via SSH.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'Ya, Reboot Sekarang!',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        CustomSwal.fire({
+            title: `Rebooting Site ${activeSiteFilter}...`,
+            text: 'Memproses multi-threading SSH...',
+            allowOutsideClick: false,
+            didOpen: () => { CustomSwal.showLoading(); }
+        });
+
+        try {
+            const res = await fetch(`/api/reboot-site/${encodeURIComponent(activeSiteFilter)}`, { method: 'POST' });
+            const data = await res.json();
+            CustomSwal.fire({
+                icon: 'info',
+                title: 'Selesai!',
+                html: `Site: <b>${data.site}</b><br>Total AP: ${data.total}<br>Sukses: <span class="text-success font-mono">${data.success}</span> | Gagal: <span class="text-danger font-mono">${data.failed}</span>`,
+                confirmButtonText: 'Tutup'
+            }).then(() => location.reload());
+        } catch (err) {
+            CustomSwal.fire('Error', String(err), 'error');
+        }
+    }
+}
+
+async function handleAddAP(event) {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const data = Object.fromEntries(formData.entries());
+
+    try {
+        const res = await fetch('/api/aps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.status === 'success') {
+            CustomSwal.fire('Berhasil!', result.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', result.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+function openEditModal(ap) {
+    document.getElementById('edit_id').value = ap.id;
+    document.getElementById('edit_name').value = ap.name;
+    document.getElementById('edit_ip').value = ap.ip;
+    document.getElementById('edit_device_type').value = ap.device_type || 'unifi';
+    document.getElementById('edit_site').value = ap.site || 'Fasilkom';
+    document.getElementById('edit_group').value = ap.group || '';
+    document.getElementById('edit_username').value = ap.username || '';
+    document.getElementById('edit_password').value = '';
+    
+    new bootstrap.Modal(document.getElementById('editApModal')).show();
+}
+
+async function handleEditAP(event) {
+    event.preventDefault();
+    const id = document.getElementById('edit_id').value;
+    const data = {
+        name: document.getElementById('edit_name').value,
+        ip: document.getElementById('edit_ip').value,
+        device_type: document.getElementById('edit_device_type').value,
+        site: document.getElementById('edit_site').value,
+        group: document.getElementById('edit_group').value,
+        username: document.getElementById('edit_username').value,
+        password: document.getElementById('edit_password').value
+    };
+
+    try {
+        const res = await fetch(`/api/aps/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.status === 'success') {
+            CustomSwal.fire('Berhasil!', result.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', result.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+async function deleteAP(id, name, ip) {
+    const confirm = await CustomSwal.fire({
+        title: `Hapus ${name}?`,
+        html: `Apakah Anda yakin ingin menghapus IP <code>${ip}</code> dari sistem?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'Ya, Hapus',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        try {
+            const res = await fetch(`/api/aps/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.status === 'success') {
+                CustomSwal.fire('Terhapus!', result.message, 'success').then(() => location.reload());
+            } else {
+                CustomSwal.fire('Gagal!', result.message, 'error');
+            }
+        } catch (err) {
+            CustomSwal.fire('Error', String(err), 'error');
+        }
+    }
+}
+
+async function handleBulkImport(event) {
+    event.preventDefault();
+    const rawIps = document.getElementById('bulk_ips').value;
+    const targetSite = document.getElementById('bulk_site').value;
+    const targetVendor = document.getElementById('bulk_device_type').value;
+    const defaultGroup = document.getElementById('bulk_group').value;
+
+    if (!rawIps.trim()) {
+        CustomSwal.fire('Peringatan', 'Harap masukkan daftar IP', 'warning');
+        return;
+    }
+
+    CustomSwal.fire({
+        title: 'Mengimpor Data...',
+        text: `Menyimpan ${targetVendor.toUpperCase()} AP ke Site '${targetSite}'...`,
+        allowOutsideClick: false,
+        didOpen: () => { CustomSwal.showLoading(); }
+    });
+
+    try {
+        const res = await fetch('/api/aps/bulk-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                raw_text: rawIps, 
+                device_type: targetVendor,
+                site: targetSite, 
+                group: defaultGroup 
+            })
+        });
+        const result = await res.json();
+        if (result.status === 'success') {
+            CustomSwal.fire('Import Berhasil!', result.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', result.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+async function rebootSingleAP(id, name) {
+    const confirm = await CustomSwal.fire({
+        title: `Reboot ${name}?`,
+        text: "Koneksi klien nirkabel pada AP ini akan terputus sementara saat proses reboot.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'Ya, Reboot Sekarang',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        CustomSwal.fire({
+            title: 'Connecting SSH...',
+            allowOutsideClick: false,
+            didOpen: () => { CustomSwal.showLoading(); }
+        });
+
+        const res = await fetch(`/api/reboot/${id}`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            CustomSwal.fire('Berhasil!', data.message, 'success').then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', data.message, 'error');
+        }
+    }
+}
+
+async function rebootSelectedAPs() {
+    const checked = Array.from(document.querySelectorAll('.ap-check:checked')).map(cb => parseInt(cb.value));
+    if (checked.length === 0) {
+        CustomSwal.fire('Pilih AP Terlebih Dahulu', 'Centang kotak di samping AP yang ingin Anda reboot.', 'info');
+        return;
+    }
+
+    const confirm = await CustomSwal.fire({
+        title: `Reboot ${checked.length} Access Point?`,
+        text: `Perintah reboot via SSH akan dikirimkan ke ${checked.length} AP terpilih secara bersamaan.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        confirmButtonText: 'Ya, Eksekusi!',
+        cancelButtonText: 'Batal'
+    });
+
+    if (confirm.isConfirmed) {
+        CustomSwal.fire({
+            title: 'Memproses Reboot...',
+            text: 'Mengirim perintah SSH multi-threading...',
+            allowOutsideClick: false,
+            didOpen: () => { CustomSwal.showLoading(); }
+        });
+
+        const res = await fetch('/api/reboot-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: checked })
+        });
+        const data = await res.json();
+
+        CustomSwal.fire({
+            icon: 'info',
+            title: 'Selesai!',
+            html: `Total AP: <b>${data.total}</b><br>Sukses: <span class="text-success font-mono">${data.success}</span> | Gagal: <span class="text-danger font-mono">${data.failed}</span>`,
+            confirmButtonText: 'Tutup'
+        }).then(() => location.reload());
+    }
+}
+</script>
+{% endblock %}

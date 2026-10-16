@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}Access Points{% endblock %}
+
+{% block page_title %}
+    <i class="fas fa-wifi"></i> Manajemen Access Points
+{% endblock %}
+
+{% block topbar_actions %}
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addApModal">
+        <i class="fas fa-plus"></i>
+        <span>Tambah AP Baru</span>
+    </button>
+{% endblock %}
+
+{% block content %}
+<!-- Filter & Search Controls Bar -->
+<div class="filter-card mb-4">
+    <form method="GET" action="{{ url_for('access_points.index') }}" class="row g-2 align-items-center">
+        <!-- Controller Filter -->
+        <div class="col-12 col-md-4 col-lg-3">
+            <label for="filterController" class="form-label mb-1 small text-muted">Filter Controller</label>
+            <select name="controller_id" id="filterController" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">-- Semua Controller --</option>
+                {% for ctrl in controllers %}
+                    <option value="{{ ctrl.id }}" {% if selected_controller_id == ctrl.id %}selected{% endif %}>
+                        {{ ctrl.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Keyword Search -->
+        <div class="col-12 col-md-5 col-lg-4">
+            <label for="searchQuery" class="form-label mb-1 small text-muted">Cari Nama / IP</label>
+            <div class="input-group input-group-sm">
+                <input type="text" name="search" id="searchQuery" class="form-control" 
+                       placeholder="Ketik nama atau IP..." value="{{ search_query or '' }}">
+                <button type="submit" class="btn btn-outline-custom">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Action / Reset -->
+        <div class="col-12 col-md-3 col-lg-2 d-flex align-items-end mt-md-4">
+            {% if selected_controller_id or search_query %}
+                <a href="{{ url_for('access_points.index') }}" class="btn btn-outline-custom btn-sm w-100">
+                    <i class="fas fa-times"></i> Reset Filter
+                </a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Bulk Action Form & Bar -->
+<form method="POST" action="{{ url_for('access_points.reboot_selected') }}" id="bulkRebootForm">
+    <div class="bulk-bar d-none" id="bulkActionBar">
+        <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-check-double text-primary"></i>
+            <span class="text-light fw-medium">
+                <span id="bulkSelectedCount">0</span> Access Point dipilih
+            </span>
+        </div>
+        <button type="submit" class="btn btn-danger-custom btn-sm" data-confirm="Apakah Anda yakin ingin mereboot semua Access Point yang dipilih?">
+            <i class="fas fa-power-off"></i> Reboot Terpilih
+        </button>
+    </div>
+
+    <!-- Access Points Table Card -->
+    <div class="custom-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title">
+                <i class="fas fa-list-check"></i> Daftar Access Point
+            </h5>
+            <span class="badge bg-secondary font-mono">{{ access_points|length }} APs</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table custom-table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;" class="text-center">
+                                <input type="checkbox" class="form-check-input" id="selectAllAps" title="Pilih Semua">
+                            </th>
+                            <th>Nama AP</th>
+                            <th>Alamat IP</th>
+                            <th>Controller</th>
+                            <th>Status</th>
+                            <th>Terakhir Diperiksa</th>
+                            <th class="text-end">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if access_points %}
+                            {% for ap in access_points %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox" name="selected_aps[]" value="{{ ap.id }}" class="form-check-input ap-checkbox">
+                                    </td>
+                                    <td>
+                                        <span class="fw-semibold text-light">{{ ap.name }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="font-mono text-light">{{ ap.ip_address }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted">
+                                            <i class="fas fa-server me-1 small"></i>
+                                            {{ ap.controller.name if ap.controller else '-' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% set s = ap.status|lower if ap.status else 'unknown' %}
+                                        <span class="status-badge {{ s }} status-badge-ap-{{ ap.id }}">
+                                            <span class="dot"></span>
+                                            {{ s }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted small last-checked-ap-{{ ap.id }}">
+                                            {{ ap.last_checked.strftime('%d %b %Y %H:%M:%S') if ap.last_checked else 'Belum pernah' }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="d-inline-flex gap-1">
+                                            <!-- Check Status Button -->
+                                            <button type="button" class="btn btn-outline-custom btn-sm-action" 
+                                                    title="Periksa Konektivitas" 
+                                                    onclick="checkApStatus({{ ap.id }}, this)">
+                                                <i class="fas fa-stethoscope"></i>
+                                            </button>
+                                            
+                                            <!-- Reboot Button -->
+                                            <button type="button" class="btn btn-danger-custom btn-sm-action" 
+                                                    title="Reboot AP" 
+                                                    onclick="rebootAp({{ ap.id }}, this)">
+                                                <i class="fas fa-power-off"></i>
+                                            </button>
+
+                                            <!-- Edit Modal Trigger Button -->
+                                            <button type="button" class="btn btn-outline-custom btn-sm-action" 
+                                                    title="Edit Data AP"
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#editApModal"
+                                                    data-id="{{ ap.id }}"
+                                                    data-name="{{ ap.name }}"
+                                                    data-ip="{{ ap.ip_address }}"
+                                                    data-controller-id="{{ ap.controller_id }}">
+                                                <i class="fas fa-pen-to-square"></i>
+                                            </button>
+
+                                            <!-- Delete Button -->
+                                            <form method="POST" action="{{ url_for('access_points.delete', ap_id=ap.id) }}" class="d-inline">
+                                                <button type="submit" class="btn btn-outline-custom btn-sm-action text-danger" 
+                                                        title="Hapus AP"
+                                                        data-confirm="Apakah Anda yakin ingin menghapus AP '{{ ap.name }}'?">
+                                                    <i class="fas fa-trash-can"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">
+                                    <i class="fas fa-info-circle me-1"></i> Tidak ada Access Point yang cocok dengan kriteria.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Modal: Tambah Access Point Baru -->
+<div class="modal fade" id="addApModal" tabindex="-1" aria-labelledby="addApModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('access_points.add') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addApModalLabel">
+                        <i class="fas fa-plus text-primary me-2"></i>Tambah Access Point Baru
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="apName" class="form-label">Nama Access Point <span class="text-danger">*</span></label>
+                        <input type="text" name="name" id="apName" class="form-control" placeholder="Contoh: AP-Lantai-1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="apIp" class="form-label">Alamat IP <span class="text-danger">*</span></label>
+                        <input type="text" name="ip_address" id="apIp" class="form-control font-mono" placeholder="192.168.1.50" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="apController" class="form-label">Controller Terkait <span class="text-danger">*</span></label>
+                        <select name="controller_id" id="apController" class="form-select" required>
+                            <option value="">-- Pilih Controller --</option>
+                            {% for ctrl in controllers %}
+                                <option value="{{ ctrl.id }}">{{ ctrl.name }} ({{ ctrl.ssh_username }})</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text text-muted">Controller menyediakan kredensial SSH untuk reboot AP ini.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> Simpan AP
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edit Access Point -->
+<div class="modal fade" id="editApModal" tabindex="-1" aria-labelledby="editApModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editApModalLabel">
+                        <i class="fas fa-pen-to-square text-primary me-2"></i>Edit Access Point
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editApName" class="form-label">Nama Access Point <span class="text-danger">*</span></label>
+                        <input type="text" name="name" id="editApName" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editApIp" class="form-label">Alamat IP <span class="text-danger">*</span></label>
+                        <input type="text" name="ip_address" id="editApIp" class="form-control font-mono" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editApController" class="form-label">Controller Terkait <span class="text-danger">*</span></label>
+                        <select name="controller_id" id="editApController" class="form-select" required>
+                            <option value="">-- Pilih Controller --</option>
+                            {% for ctrl in controllers %}
+                                <option value="{{ ctrl.id }}">{{ ctrl.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Perbarui Data
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,883 @@
+import os
+import asyncio
+from datetime import datetime
+from contextlib import asynccontextmanager
+from typing import Optional, List
+from fastapi import FastAPI, Depends, Request, Form, HTTPException, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+
+from app.database import (
+    init_db, get_db, SessionLocal,
+    AccessPoint, RebootSchedule, RebootLog, AppSetting, User,
+    get_setting, set_setting, hash_password, verify_password
+)
+from app.seed import seed_initial_aps
+from app.scheduler import setup_scheduler, reload_scheduler_jobs, execute_scheduled_reboot
+from app.ssh_worker import execute_ssh_reboot, reboot_aps_batch
+from app.monitor import run_monitor_cycle
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Siapkan database, seed data, & scheduler
+    init_db()
+    seed_initial_aps()
+    setup_scheduler()
+    # Trigger 1x scan status di awal
+    asyncio.create_task(asyncio.to_thread(run_monitor_cycle))
+    yield
+    # Shutdown
+
+app = FastAPI(title="OTO REBOOT", lifespan=lifespan)
+# Session Middleware untuk login
+app.add_middleware(SessionMiddleware, secret_key="oto-reboot-fleet-secret-key-39284729")
+
+# Setup Templates & Static
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+static_dir = os.path.join(BASE_DIR, "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# ==================== SCHEMAS ====================
+class APCreateSchema(BaseModel):
+    name: str
+    ip: str
+    device_type: Optional[str] = "unifi" # "unifi" or "ruckus"
+    site: Optional[str] = "Fasilkom"
+    group: Optional[str] = "Default"
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+class APEditSchema(BaseModel):
+    name: str
+    ip: str
+    device_type: Optional[str] = "unifi"
+    site: Optional[str] = "Fasilkom"
+    group: Optional[str] = "Default"
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+class BulkImportSchema(BaseModel):
+    raw_text: str
+    device_type: Optional[str] = "unifi"
+    site: Optional[str] = "Fasilkom"
+    group: Optional[str] = "Default"
+
+class ScheduleCreateSchema(BaseModel):
+    name: str
+    hour: int
+    minute: int
+    days_of_week: Optional[str] = "*"
+    target_type: str = "all" # all, site, group, selected
+    target_payload: Optional[str] = None
+
+class BatchRebootSchema(BaseModel):
+    ids: List[int]
+
+class UserCreateSchema(BaseModel):
+    username: str
+    full_name: str
+    password: str
+    role: Optional[str] = "site_admin" # "superadmin" atau "site_admin"
+    allowed_sites: Optional[str] = "*" # "*" atau comma-separated
+
+class UserEditSchema(BaseModel):
+    username: str
+    full_name: str
+    role: Optional[str] = "site_admin"
+    allowed_sites: Optional[str] = "*"
+
+class UserChangePasswordSchema(BaseModel):
+    password: str
+
+# ==================== AUTH & RBAC HELPERS ====================
+
+def get_current_user_from_request(request: Request, db: Session) -> Optional[User]:
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return None
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    return user
+
+def filter_aps_by_user(query, user: User):
+    if not user or user.role == "superadmin" or user.allowed_sites == "*":
+        return query
+    allowed = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+    return query.filter(AccessPoint.site.in_(allowed))
+
+def user_can_access_site(user: User, site_name: str, db: Optional[Session] = None) -> bool:
+    if not user or user.role == "superadmin" or user.allowed_sites == "*":
+        return True
+    if not user.allowed_sites:
+        return False
+    allowed = [s.strip().lower() for s in user.allowed_sites.split(",") if s.strip()]
+    if site_name.strip().lower() in allowed:
+        return True
+
+    # Jika user site_admin mengetik nama site baru yang belum pernah ada di DB, izinkan dan daftarkan ke allowed_sites miliknya
+    if db is not None:
+        existing_other = db.query(AccessPoint).filter(AccessPoint.site.ilike(site_name.strip())).first()
+        if not existing_other:
+            current_allowed = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+            current_allowed.append(site_name.strip())
+            user.allowed_sites = ", ".join(current_allowed)
+            db.commit()
+            return True
+
+    return False
+
+import urllib.parse
+import requests
+
+# ==================== AUTH ROUTES ====================
+
+@app.get("/login", response_class=HTMLResponse)
+async def page_login(request: Request, error: Optional[str] = None, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if user:
+        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+    google_enabled = get_setting(db, "google_oauth_enabled", "0") == "1" or bool(get_setting(db, "google_client_id"))
+    return templates.TemplateResponse(
+        request=request, 
+        name="login.html", 
+        context={
+            "error": error,
+            "google_enabled": google_enabled
+        }
+    )
+
+@app.post("/login", response_class=HTMLResponse)
+async def handle_login(request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username.strip(), User.is_active == True).first()
+    if not user or not user.password_hash or not verify_password(password, user.password_hash):
+        google_enabled = get_setting(db, "google_oauth_enabled", "0") == "1" or bool(get_setting(db, "google_client_id"))
+        return templates.TemplateResponse(
+            request=request, 
+            name="login.html", 
+            context={
+                "error": "Username atau Password salah. Silakan coba lagi.",
+                "google_enabled": google_enabled
+            }
+        )
+    
+    # Set session
+    request.session["user_id"] = user.id
+    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/logout")
+async def handle_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/auth/google/login")
+async def google_login(request: Request, db: Session = Depends(get_db)):
+    client_id = get_setting(db, "google_client_id") or os.environ.get("GOOGLE_CLIENT_ID", "")
+    if not client_id:
+        return RedirectResponse("/login?error=Google+OAuth+belum+dikonfigurasi.+Silakan+masukkan+Google+Client+ID+di+menu+Pengaturan+Sistem.", status_code=status.HTTP_303_SEE_OTHER)
+
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account"
+    }
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
+    return RedirectResponse(url)
+
+@app.get("/auth/google/callback")
+async def google_callback(request: Request, code: Optional[str] = None, error: Optional[str] = None, db: Session = Depends(get_db)):
+    if error or not code:
+        err_msg = error or "Otorisasi dibatalkan."
+        return RedirectResponse(f"/login?error=Login+Google+gagal:+{urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
+
+    client_id = get_setting(db, "google_client_id") or os.environ.get("GOOGLE_CLIENT_ID", "")
+    client_secret = get_setting(db, "google_client_secret") or os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+
+    try:
+        token_res = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code"
+            },
+            timeout=10
+        )
+        token_data = token_res.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            err_desc = token_data.get("error_description", token_data.get("error", "Unknown token error"))
+            return RedirectResponse(f"/login?error=Gagal+verifikasi+token+Google:+{urllib.parse.quote(err_desc)}", status_code=status.HTTP_303_SEE_OTHER)
+
+        userinfo_res = requests.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10
+        )
+        profile = userinfo_res.json()
+        g_id = profile.get("id")
+        g_email = profile.get("email")
+        g_name = profile.get("name") or g_email
+        g_avatar = profile.get("picture")
+
+        if not g_email:
+            return RedirectResponse("/login?error=Akun+Google+tidak+menyertakan+email.", status_code=status.HTTP_303_SEE_OTHER)
+
+        # Cari user berdasarkan google_id atau email
+        user = db.query(User).filter((User.google_id == g_id) | (User.email == g_email)).first()
+        if not user:
+            # Auto-register akun baru
+            base_uname = g_email.split("@")[0].replace(".", "_")
+            uname = base_uname
+            idx = 1
+            while db.query(User).filter(User.username == uname).first():
+                uname = f"{base_uname}_{idx}"
+                idx += 1
+
+            default_site_cfg = get_setting(db, "google_default_site", "kosong")
+            if not default_site_cfg or default_site_cfg.strip().lower() in ["kosong", "kosongan", "auto", "personal", "site kosong"]:
+                # Dibuat kosongan (Site Mandiri) agar user baru bebas mengisi dan menambahkan AP sendiri
+                user_site = f"Site {uname}"
+            else:
+                user_site = default_site_cfg.strip()
+
+            user = User(
+                username=uname,
+                email=g_email,
+                google_id=g_id,
+                avatar_url=g_avatar,
+                full_name=g_name,
+                password_hash=None,
+                role="site_admin",
+                allowed_sites=user_site,
+                is_active=True
+            )
+            db.add(user)
+            db.commit()
+        else:
+            user.google_id = g_id
+            user.avatar_url = g_avatar
+            if not user.email:
+                user.email = g_email
+            db.commit()
+
+        if not user.is_active:
+            return RedirectResponse("/login?error=Akun+Anda+telah+dinonaktifkan+oleh+Administrator.", status_code=status.HTTP_303_SEE_OTHER)
+
+        request.session["user_id"] = user.id
+        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+    except Exception as e:
+        return RedirectResponse(f"/login?error=Terjadi+kesalahan+Google+OAuth:+{urllib.parse.quote(str(e))}", status_code=status.HTTP_303_SEE_OTHER)
+
+# ==================== WEB PAGES (WITH RBAC) ====================
+
+@app.get("/", response_class=HTMLResponse)
+async def page_dashboard(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    base_query = db.query(AccessPoint).filter(AccessPoint.is_active == True)
+    user_aps_query = filter_aps_by_user(base_query, user)
+
+    total_aps = user_aps_query.count()
+    online_aps = user_aps_query.filter(AccessPoint.is_online == True).count()
+    offline_aps = total_aps - online_aps
+    active_schedules = db.query(RebootSchedule).filter(RebootSchedule.is_enabled == True).count()
+
+    online_pct = int((online_aps / total_aps * 100)) if total_aps > 0 else 0
+
+    aps = user_aps_query.order_by(AccessPoint.site, AccessPoint.name).all()
+    recent_logs = db.query(RebootLog).order_by(desc(RebootLog.timestamp)).limit(10).all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={
+            "active_page": "dashboard",
+            "current_user": user,
+            "online_pct": online_pct,
+            "stats": {
+                "total_aps": total_aps,
+                "online_aps": online_aps,
+                "offline_aps": offline_aps,
+                "active_schedules": active_schedules
+            },
+            "aps": aps,
+            "recent_logs": recent_logs
+        }
+    )
+
+@app.get("/aps", response_class=HTMLResponse)
+async def page_aps(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    base_query = db.query(AccessPoint).order_by(AccessPoint.site, AccessPoint.group, AccessPoint.name)
+    aps_query = filter_aps_by_user(base_query, user)
+    aps = aps_query.all()
+    
+    # Ambil list site unik yang diperbolehkan untuk user ini
+    existing_sites = [ap.site for ap in aps if ap.site]
+    if user.role == "superadmin" or user.allowed_sites == "*":
+        sites = sorted(list(set(existing_sites)))
+        if not sites:
+            sites = ["Fasilkom"]
+    else:
+        user_sites = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+        sites = sorted(list(set(existing_sites) | set(user_sites)))
+        if not sites:
+            sites = [f"Site {user.username}"]
+
+    # Hitung jumlah AP per site (site kosong tetap terhitung 0 AP)
+    site_counts = {s: 0 for s in sites}
+    for ap in aps:
+        s = ap.site or (sites[0] if sites else "Default")
+        site_counts[s] = site_counts.get(s, 0) + 1
+
+    groups = sorted(list(set([ap.group for ap in aps if ap.group])))
+
+    aps_data = [
+        {
+            "id": ap.id,
+            "name": ap.name,
+            "ip": ap.ip,
+            "device_type": getattr(ap, "device_type", "unifi") or "unifi",
+            "site": ap.site or (sites[0] if sites else "Default"),
+            "group": ap.group,
+            "username": ap.username,
+            "is_online": ap.is_online,
+            "latency_ms": ap.latency_ms,
+            "last_rebooted": ap.last_rebooted
+        }
+        for ap in aps
+    ]
+
+    default_user_site = sites[0] if sites else (f"Site {user.username}" if user.role != "superadmin" else "Fasilkom")
+
+    return templates.TemplateResponse(
+        request=request,
+        name="aps.html",
+        context={
+            "active_page": "aps",
+            "current_user": user,
+            "aps": aps_data,
+            "sites": sites,
+            "default_user_site": default_user_site,
+            "site_counts": site_counts,
+            "groups": groups
+        }
+    )
+
+@app.get("/schedules", response_class=HTMLResponse)
+async def page_schedules(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    schedules = db.query(RebootSchedule).order_by(RebootSchedule.hour, RebootSchedule.minute).all()
+    
+    # Ambil sites yang relevan untuk target
+    all_aps = filter_aps_by_user(db.query(AccessPoint), user).all()
+    existing_sites = [ap.site for ap in all_aps if ap.site]
+    if user.role == "superadmin" or user.allowed_sites == "*":
+        sites = sorted(list(set(existing_sites)))
+    else:
+        user_sites = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+        sites = sorted(list(set(existing_sites) | set(user_sites)))
+    groups = sorted(list(set([ap.group for ap in all_aps if ap.group])))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="schedules.html",
+        context={
+            "active_page": "schedules",
+            "current_user": user,
+            "schedules": schedules,
+            "groups": groups,
+            "sites": sites
+        }
+    )
+
+@app.get("/logs", response_class=HTMLResponse)
+async def page_logs(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    logs = db.query(RebootLog).order_by(desc(RebootLog.timestamp)).limit(500).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="logs.html",
+        context={
+            "active_page": "logs",
+            "current_user": user,
+            "logs": logs
+        }
+    )
+
+@app.get("/settings", response_class=HTMLResponse)
+async def page_settings(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    # Hanya superadmin yang dapat mengakses pengaturan global
+    if user.role != "superadmin":
+        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+    settings_dict = {
+        "ssh_username": get_setting(db, "ssh_username", "aproot"),
+        "ssh_password": get_setting(db, "ssh_password", "Asdf123#"),
+        "ssh_port": get_setting(db, "ssh_port", "22"),
+        "ssh_timeout": get_setting(db, "ssh_timeout", "5"),
+        "ruckus_ssh_username": get_setting(db, "ruckus_ssh_username", "aproot"),
+        "ruckus_ssh_password": get_setting(db, "ruckus_ssh_password", "Asdf123#"),
+        "ruckus_ssh_port": get_setting(db, "ruckus_ssh_port", "22"),
+        "ruckus_ssh_timeout": get_setting(db, "ruckus_ssh_timeout", "10"),
+        "google_oauth_enabled": get_setting(db, "google_oauth_enabled", "0"),
+        "google_client_id": get_setting(db, "google_client_id", ""),
+        "google_client_secret": get_setting(db, "google_client_secret", ""),
+        "google_default_site": get_setting(db, "google_default_site", "Fasilkom"),
+        "ping_interval": get_setting(db, "ping_interval", "30"),
+        "ping_timeout": get_setting(db, "ping_timeout", "2"),
+    }
+    return templates.TemplateResponse(
+        request=request,
+        name="settings.html",
+        context={
+            "active_page": "settings",
+            "current_user": user,
+            "settings": settings_dict
+        }
+    )
+
+@app.get("/users", response_class=HTMLResponse)
+async def page_users(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    # Hanya superadmin yang boleh akses halaman Users
+    if user.role != "superadmin":
+        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+    users = db.query(User).order_by(User.id).all()
+    all_aps = db.query(AccessPoint).all()
+    all_sites = sorted(list(set([ap.site for ap in all_aps if ap.site])))
+    if not all_sites:
+        all_sites = ["Fasilkom"]
+
+    users_data = [
+        {
+            "id": u.id,
+            "username": u.username,
+            "full_name": u.full_name,
+            "role": u.role,
+            "allowed_sites": u.allowed_sites,
+            "is_active": u.is_active,
+            "created_at": u.created_at.strftime('%d/%m/%Y %H:%M') if u.created_at else ""
+        }
+        for u in users
+    ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="users.html",
+        context={
+            "active_page": "users",
+            "current_user": user,
+            "users": users_data,
+            "all_sites": all_sites
+        }
+    )
+
+# ==================== API: USER MANAGEMENT (SUPERADMIN ONLY) ====================
+
+@app.post("/api/users")
+async def api_create_user(payload: UserCreateSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user or user.role != "superadmin":
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak. Hanya Superadmin yang diizinkan."})
+
+    existing = db.query(User).filter(User.username == payload.username.strip()).first()
+    if existing:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Username '{payload.username}' sudah digunakan."})
+
+    new_user = User(
+        username=payload.username.strip(),
+        full_name=payload.full_name.strip(),
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        allowed_sites=payload.allowed_sites if payload.role != "superadmin" else "*",
+        is_active=True
+    )
+    db.add(new_user)
+    db.commit()
+    return {"status": "success", "message": f"Pengguna '{new_user.username}' berhasil dibuat."}
+
+@app.put("/api/users/{user_id}")
+async def api_edit_user(user_id: int, payload: UserEditSchema, request: Request, db: Session = Depends(get_db)):
+    current_u = get_current_user_from_request(request, db)
+    if not current_u or current_u.role != "superadmin":
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak."})
+
+    target_u = db.query(User).filter(User.id == user_id).first()
+    if not target_u:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "User tidak ditemukan."})
+
+    # Cek duplikat username jika diubah
+    if payload.username.strip() != target_u.username:
+        conflict = db.query(User).filter(User.username == payload.username.strip(), User.id != user_id).first()
+        if conflict:
+            return JSONResponse(status_code=400, content={"status": "error", "message": f"Username '{payload.username}' sudah dipakai."})
+
+    target_u.username = payload.username.strip()
+    target_u.full_name = payload.full_name.strip()
+    target_u.role = payload.role
+    target_u.allowed_sites = payload.allowed_sites if payload.role != "superadmin" else "*"
+
+    db.commit()
+    return {"status": "success", "message": f"Data pengguna '{target_u.username}' berhasil diperbarui."}
+
+@app.post("/api/users/{user_id}/change-password")
+async def api_change_password(user_id: int, payload: UserChangePasswordSchema, request: Request, db: Session = Depends(get_db)):
+    current_u = get_current_user_from_request(request, db)
+    if not current_u or current_u.role != "superadmin":
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak."})
+
+    target_u = db.query(User).filter(User.id == user_id).first()
+    if not target_u:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "User tidak ditemukan."})
+
+    target_u.password_hash = hash_password(payload.password)
+    db.commit()
+    return {"status": "success", "message": f"Password untuk '{target_u.username}' berhasil diubah."}
+
+@app.delete("/api/users/{user_id}")
+async def api_delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    current_u = get_current_user_from_request(request, db)
+    if not current_u or current_u.role != "superadmin":
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak."})
+
+    if current_u.id == user_id:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Anda tidak dapat menghapus akun Anda sendiri."})
+
+    target_u = db.query(User).filter(User.id == user_id).first()
+    if not target_u:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "User tidak ditemukan."})
+
+    uname = target_u.username
+    db.delete(target_u)
+    db.commit()
+    return {"status": "success", "message": f"User '{uname}' berhasil dihapus."}
+
+# ==================== API: ACCESS POINTS (WITH RBAC CHECK) ====================
+
+@app.post("/api/aps")
+async def api_add_ap(payload: APCreateSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login terlebih dahulu."})
+
+    target_site = payload.site.strip() if payload.site else (user.allowed_sites.split(',')[0].strip() if user.allowed_sites and user.allowed_sites != '*' else "Fasilkom")
+    if not user_can_access_site(user, target_site, db=db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki izin mengelola Site '{target_site}'."})
+
+    existing = db.query(AccessPoint).filter(AccessPoint.ip == payload.ip.strip()).first()
+    if existing:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"IP {payload.ip} sudah terdaftar"})
+
+    new_ap = AccessPoint(
+        name=payload.name.strip(),
+        ip=payload.ip.strip(),
+        device_type=payload.device_type or "unifi",
+        site=target_site,
+        group=payload.group.strip() if payload.group else "Default",
+        username=payload.username.strip() if payload.username else None,
+        password=payload.password if payload.password else None
+    )
+    db.add(new_ap)
+    db.commit()
+
+    asyncio.create_task(asyncio.to_thread(run_monitor_cycle))
+    return {"status": "success", "message": f"Access Point {payload.name} ({new_ap.device_type.upper()}) berhasil ditambahkan"}
+
+@app.put("/api/aps/{ap_id}")
+async def api_edit_ap(ap_id: int, payload: APEditSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    ap = db.query(AccessPoint).filter(AccessPoint.id == ap_id).first()
+    if not ap:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "AP tidak ditemukan"})
+
+    if not user_can_access_site(user, ap.site, db=db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki izin mengelola AP di Site '{ap.site}'."})
+
+    target_site = payload.site.strip() if payload.site else ap.site
+    if not user_can_access_site(user, target_site, db=db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak diizinkan memindahkan AP ke Site '{target_site}'."})
+
+    if payload.ip.strip() != ap.ip:
+        conflict = db.query(AccessPoint).filter(AccessPoint.ip == payload.ip.strip(), AccessPoint.id != ap_id).first()
+        if conflict:
+            return JSONResponse(status_code=400, content={"status": "error", "message": f"IP {payload.ip} sudah digunakan oleh AP lain"})
+
+    ap.name = payload.name.strip()
+    ap.ip = payload.ip.strip()
+    ap.device_type = payload.device_type or "unifi"
+    ap.site = target_site
+    ap.group = payload.group.strip() if payload.group else "Default"
+    if payload.username is not None:
+        ap.username = payload.username.strip() if payload.username.strip() else None
+    if payload.password:
+        ap.password = payload.password
+
+    db.commit()
+    return {"status": "success", "message": f"Data AP {ap.name} berhasil diperbarui"}
+
+@app.delete("/api/aps/{ap_id}")
+async def api_delete_ap(ap_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    ap = db.query(AccessPoint).filter(AccessPoint.id == ap_id).first()
+    if not ap:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "AP tidak ditemukan"})
+
+    if not user_can_access_site(user, ap.site, db=db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki izin menghapus AP di Site '{ap.site}'."})
+
+    name = ap.name
+    db.delete(ap)
+    db.commit()
+    return {"status": "success", "message": f"AP {name} berhasil dihapus"}
+
+@app.post("/api/aps/bulk-import")
+async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    site_name = payload.site.strip() if payload.site else (user.allowed_sites.split(',')[0].strip() if user.allowed_sites and user.allowed_sites != '*' else "Fasilkom")
+    if not user_can_access_site(user, site_name, db=db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki izin mengimpor AP ke Site '{site_name}'."})
+
+    lines = payload.raw_text.strip().splitlines()
+    count_added = 0
+    count_skipped = 0
+    dev_type = payload.device_type or "unifi"
+
+    for line in lines:
+        cleaned = line.strip().strip(",").strip('"').strip("'")
+        if not cleaned or cleaned.startswith("#"):
+            continue
+
+        parts = [p.strip() for p in cleaned.split(",")]
+        ip = parts[0]
+        name = parts[1] if len(parts) > 1 else f"AP {ip}"
+
+        existing = db.query(AccessPoint).filter(AccessPoint.ip == ip).first()
+        if existing:
+            count_skipped += 1
+            continue
+
+        new_ap = AccessPoint(
+            name=name,
+            ip=ip,
+            device_type=dev_type,
+            site=site_name,
+            group=payload.group or "Default"
+        )
+        db.add(new_ap)
+        count_added += 1
+
+    db.commit()
+    asyncio.create_task(asyncio.to_thread(run_monitor_cycle))
+
+    return {
+        "status": "success",
+        "message": f"Import selesai: {count_added} AP berhasil ditambahkan ke Site '{site_name}', {count_skipped} dilewati (sudah ada)."
+    }
+
+# ==================== API: REBOOT & SCAN (RBAC FILTERED) ====================
+
+@app.post("/api/scan-status")
+async def api_scan_status():
+    await asyncio.to_thread(run_monitor_cycle)
+    return {"status": "ok", "message": "Scan selesai"}
+
+@app.post("/api/reboot/{ap_id}")
+async def api_reboot_single(ap_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    ap = db.query(AccessPoint).filter(AccessPoint.id == ap_id).first()
+    if not ap:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "AP tidak ditemukan."})
+
+    if not user_can_access_site(user, ap.site):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak diizinkan me-reboot AP di Site '{ap.site}'."})
+
+    result = await asyncio.to_thread(execute_ssh_reboot, ap_id, "manual", None)
+    return result
+
+@app.post("/api/reboot-all")
+async def api_reboot_all(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    base_query = db.query(AccessPoint).filter(AccessPoint.is_active == True)
+    user_aps = filter_aps_by_user(base_query, user).all()
+    ap_ids = [ap.id for ap in user_aps]
+
+    results = await asyncio.to_thread(reboot_aps_batch, ap_ids, "manual", f"Reboot Scope ({user.username})")
+    success_count = sum(1 for r in results if r.get("status") == "success")
+    failed_count = len(results) - success_count
+
+    return {
+        "status": "completed",
+        "total": len(results),
+        "success": success_count,
+        "failed": failed_count
+    }
+
+@app.post("/api/reboot-batch")
+async def api_reboot_batch(payload: BatchRebootSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    # Filter agar hanya AP yang boleh diakses user yang direboot
+    allowed_aps = db.query(AccessPoint).filter(AccessPoint.id.in_(payload.ids))
+    allowed_aps = filter_aps_by_user(allowed_aps, user).all()
+    valid_ids = [ap.id for ap in allowed_aps]
+
+    results = await asyncio.to_thread(reboot_aps_batch, valid_ids, "manual", "Reboot Terpilih")
+    success_count = sum(1 for r in results if r.get("status") == "success")
+    failed_count = len(results) - success_count
+
+    return {
+        "status": "completed",
+        "total": len(results),
+        "success": success_count,
+        "failed": failed_count
+    }
+
+@app.post("/api/reboot-site/{site_name}")
+async def api_reboot_site(site_name: str, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    if not user_can_access_site(user, site_name):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak diizinkan me-reboot Site '{site_name}'."})
+
+    aps = db.query(AccessPoint).filter(AccessPoint.is_active == True, AccessPoint.site == site_name).all()
+    ap_ids = [ap.id for ap in aps]
+    if not ap_ids:
+        return {"status": "error", "message": f"Tidak ada AP aktif di Site '{site_name}'"}
+
+    results = await asyncio.to_thread(reboot_aps_batch, ap_ids, "manual", f"Reboot Site: {site_name}")
+    success_count = sum(1 for r in results if r.get("status") == "success")
+    failed_count = len(results) - success_count
+
+    return {
+        "status": "completed",
+        "site": site_name,
+        "total": len(results),
+        "success": success_count,
+        "failed": failed_count
+    }
+
+# ==================== API: SCHEDULES ====================
+
+@app.post("/api/schedules")
+async def api_add_schedule(payload: ScheduleCreateSchema, db: Session = Depends(get_db)):
+    schedule = RebootSchedule(
+        name=payload.name.strip(),
+        hour=payload.hour,
+        minute=payload.minute,
+        days_of_week=payload.days_of_week,
+        target_type=payload.target_type,
+        target_payload=payload.target_payload
+    )
+    db.add(schedule)
+    db.commit()
+    reload_scheduler_jobs()
+    return {"status": "success", "message": f"Jadwal '{payload.name}' berhasil dibuat"}
+
+@app.post("/api/schedules/{schedule_id}/toggle")
+async def api_toggle_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    schedule = db.query(RebootSchedule).filter(RebootSchedule.id == schedule_id).first()
+    if not schedule:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Jadwal tidak ditemukan"})
+
+    schedule.is_enabled = not schedule.is_enabled
+    db.commit()
+    reload_scheduler_jobs()
+
+    status_str = "diaktifkan" if schedule.is_enabled else "dinonaktifkan"
+    return {"status": "success", "message": f"Jadwal '{schedule.name}' berhasil {status_str}"}
+
+@app.delete("/api/schedules/{schedule_id}")
+async def api_delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    schedule = db.query(RebootSchedule).filter(RebootSchedule.id == schedule_id).first()
+    if not schedule:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Jadwal tidak ditemukan"})
+
+    name = schedule.name
+    db.delete(schedule)
+    db.commit()
+    reload_scheduler_jobs()
+    return {"status": "success", "message": f"Jadwal '{name}' berhasil dihapus"}
+
+@app.post("/api/schedules/{schedule_id}/run-now")
+async def api_run_schedule_now(schedule_id: int):
+    await asyncio.to_thread(execute_scheduled_reboot, schedule_id)
+    return {"status": "success", "message": "Jadwal berhasil dieksekusi"}
+
+# ==================== API: LOGS ====================
+
+@app.delete("/api/logs")
+async def api_clear_logs(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user or user.role != "superadmin":
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Hanya Superadmin yang dapat membersihkan seluruh log."})
+
+    db.query(RebootLog).delete()
+    db.commit()
+    return {"status": "success", "message": "Semua riwayat log berhasil dibersihkan"}
+
+# ==================== API: SETTINGS ====================
+
+@app.post("/api/settings")
+async def api_save_settings(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user or user.role != "superadmin":
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak."})
+
+    data = await request.json()
+    for key, val in data.items():
+        set_setting(db, key, str(val))
+    return {"status": "success", "message": "Pengaturan berhasil disimpan"}

@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block page_title %}
+    <i class="fas fa-tachometer-alt"></i> Dashboard Monitoring
+{% endblock %}
+
+{% block topbar_actions %}
+    <button type="button" class="btn btn-accent" id="btnRefreshAll" onclick="checkAllAps(this)">
+        <i class="fas fa-arrows-rotate"></i>
+        <span>Refresh Semua Status</span>
+    </button>
+{% endblock %}
+
+{% block content %}
+<!-- Stat Cards Row -->
+<div class="row g-3 mb-4">
+    <!-- Stat 1: Total AP -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card blue">
+            <div class="card-inner">
+                <div class="stat-info">
+                    <span class="stat-label">Total AP</span>
+                    <span class="stat-number" id="statTotalAps">{{ total_aps }}</span>
+                </div>
+                <div class="stat-icon-wrapper">
+                    <i class="fas fa-wifi"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stat 2: Online AP -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card green">
+            <div class="card-inner">
+                <div class="stat-info">
+                    <span class="stat-label">Online</span>
+                    <span class="stat-number" id="statOnlineAps">{{ online_count }}</span>
+                </div>
+                <div class="stat-icon-wrapper">
+                    <i class="fas fa-circle-check"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stat 3: Offline AP -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card red">
+            <div class="card-inner">
+                <div class="stat-info">
+                    <span class="stat-label">Offline</span>
+                    <span class="stat-number" id="statOfflineAps">{{ offline_count }}</span>
+                </div>
+                <div class="stat-icon-wrapper">
+                    <i class="fas fa-circle-xmark"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stat 4: Jadwal Aktif -->
+    <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card purple">
+            <div class="card-inner">
+                <div class="stat-info">
+                    <span class="stat-label">Jadwal Aktif</span>
+                    <span class="stat-number" id="statActiveSchedules">{{ active_schedules_count }}</span>
+                </div>
+                <div class="stat-icon-wrapper">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Table: Access Points Monitoring -->
+<div class="custom-card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="card-title">
+            <i class="fas fa-network-wired"></i> Status Seluruh Access Point
+        </h5>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('access_points.index') }}" class="btn btn-outline-custom btn-sm">
+                <i class="fas fa-sliders"></i> Kelola Access Points
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table custom-table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Nama Access Point</th>
+                        <th>IP Address</th>
+                        <th>Controller</th>
+                        <th>Status</th>
+                        <th>Terakhir Diperiksa</th>
+                        <th class="text-end">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if aps %}
+                        {% for ap in aps %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="fas fa-wifi text-muted"></i>
+                                        <span class="fw-semibold text-light">{{ ap.name }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="font-mono text-light">{{ ap.ip_address }}</span>
+                                </td>
+                                <td>
+                                    <span class="text-muted">
+                                        <i class="fas fa-server me-1 small"></i>
+                                        {{ ap.controller.name if ap.controller else '-' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% set s = ap.status|lower if ap.status else 'unknown' %}
+                                    <span class="status-badge {{ s }} status-badge-ap-{{ ap.id }}">
+                                        <span class="dot"></span>
+                                        {{ s }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="text-muted small last-checked-ap-{{ ap.id }}">
+                                        {{ ap.last_checked.strftime('%d %b %Y %H:%M:%S') if ap.last_checked else 'Belum pernah' }}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <div class="d-inline-flex gap-1">
+                                        <button type="button" 
+                                                class="btn btn-outline-custom btn-sm-action" 
+                                                title="Periksa Konektivitas AP" 
+                                                onclick="checkApStatus({{ ap.id }}, this)">
+                                            <i class="fas fa-stethoscope"></i> Cek Status
+                                        </button>
+                                        <button type="button" 
+                                                class="btn btn-danger-custom btn-sm-action" 
+                                                title="Kirim Perintah Reboot" 
+                                                onclick="rebootAp({{ ap.id }}, this)">
+                                            <i class="fas fa-power-off"></i> Reboot
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                <i class="fas fa-info-circle me-1"></i> Belum ada Access Point yang terdaftar. 
+                                <a href="{{ url_for('access_points.index') }}">Tambah sekarang</a>.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Section: Recent Reboot Log -->
+<div class="custom-card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title">
+            <i class="fas fa-clock-rotate-left"></i> Log Reboot Terakhir
+        </h5>
+        <a href="{{ url_for('logs.index') }}" class="btn btn-outline-custom btn-sm">
+            <i class="fas fa-list"></i> Lihat Semua Log
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table custom-table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Access Point</th>
+                        <th>IP Address</th>
+                        <th>Pemicu</th>
+                        <th>Status</th>
+                        <th>Pesan / Output</th>
+                        <th class="text-end">Waktu Eksekusi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if recent_logs %}
+                        {% for log in recent_logs %}
+                            <tr>
+                                <td>
+                                    <span class="fw-semibold text-light">
+                                        {{ log.access_point.name if log.access_point else ('AP #' ~ (log.access_point_id or '-')) }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="font-mono text-muted">
+                                        {{ log.access_point.ip_address if log.access_point else '-' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if log.triggered_by == 'scheduled' %}
+                                        <span class="status-badge scheduled">
+                                            <i class="fas fa-calendar-alt small"></i> Jadwal
+                                        </span>
+                                    {% else %}
+                                        <span class="status-badge manual">
+                                            <i class="fas fa-user small"></i> Manual
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set log_status = log.status|lower if log.status else 'unknown' %}
+                                    <span class="status-badge {{ log_status }}">
+                                        <span class="dot"></span>
+                                        {{ log_status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="text-muted small" title="{{ log.message or '-' }}">
+                                        {{ (log.message[:70] ~ '...') if log.message and log.message|length > 70 else (log.message or '-') }}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="text-muted small">
+                                        {{ log.executed_at.strftime('%d %b %Y %H:%M:%S') if log.executed_at else '-' }}
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                <i class="fas fa-info-circle me-1"></i> Belum ada aktivitas reboot tercatat.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

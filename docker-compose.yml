@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  oto-reboot:
+    build: .
+    container_name: oto-reboot
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    environment:
+      - TZ=Asia/Jakarta
+      - DATA_DIR=/app/data
+    volumes:
+      - oto_reboot_data:/app/data
+    # Jika server Linux Anda perlu akses langsung ke subnet AP tanpa NAT Docker:
+    # network_mode: "host"
+
+volumes:
+  oto_reboot_data:
