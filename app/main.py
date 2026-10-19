@@ -111,7 +111,9 @@ def get_current_user_from_request(request: Request, db: Session) -> Optional[Use
 def filter_aps_by_user(query, user: User):
     if not user or user.role == "superadmin" or user.allowed_sites == "*":
         return query
-    allowed = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+    allowed = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
+    if not allowed:
+        return query.filter(False)
     return query.filter(AccessPoint.site.in_(allowed))
 
 def user_can_access_site(user: User, site_name: str, db: Optional[Session] = None) -> bool:
@@ -119,7 +121,7 @@ def user_can_access_site(user: User, site_name: str, db: Optional[Session] = Non
         return True
     if not user.allowed_sites:
         return False
-    allowed = [s.strip().lower() for s in user.allowed_sites.split(",") if s.strip()]
+    allowed = [s.strip().lower() for s in (user.allowed_sites or "").split(",") if s.strip()]
     if site_name.strip().lower() in allowed:
         return True
 
@@ -127,7 +129,7 @@ def user_can_access_site(user: User, site_name: str, db: Optional[Session] = Non
     if db is not None:
         existing_other = db.query(AccessPoint).filter(AccessPoint.site.ilike(site_name.strip())).first()
         if not existing_other:
-            current_allowed = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+            current_allowed = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
             current_allowed.append(site_name.strip())
             user.allowed_sites = ", ".join(current_allowed)
             db.commit()
@@ -347,7 +349,7 @@ async def page_aps(request: Request, db: Session = Depends(get_db)):
         if not sites:
             sites = ["Fasilkom"]
     else:
-        user_sites = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+        user_sites = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
         sites = sorted(list(set(existing_sites) | set(user_sites)))
         if not sites:
             sites = [f"Site {user.username}"]
@@ -367,11 +369,11 @@ async def page_aps(request: Request, db: Session = Depends(get_db)):
             "ip": ap.ip,
             "device_type": getattr(ap, "device_type", "unifi") or "unifi",
             "site": ap.site or (sites[0] if sites else "Default"),
-            "group": ap.group,
-            "username": ap.username,
+            "group": ap.group or "",
+            "username": ap.username or "",
             "is_online": ap.is_online,
             "latency_ms": ap.latency_ms,
-            "last_rebooted": ap.last_rebooted
+            "last_rebooted": ap.last_rebooted.strftime('%d/%m/%Y %H:%M') if ap.last_rebooted else None
         }
         for ap in aps
     ]
@@ -406,7 +408,7 @@ async def page_schedules(request: Request, db: Session = Depends(get_db)):
     if user.role == "superadmin" or user.allowed_sites == "*":
         sites = sorted(list(set(existing_sites)))
     else:
-        user_sites = [s.strip() for s in user.allowed_sites.split(",") if s.strip()]
+        user_sites = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
         sites = sorted(list(set(existing_sites) | set(user_sites)))
     groups = sorted(list(set([ap.group for ap in all_aps if ap.group])))
 

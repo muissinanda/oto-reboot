@@ -186,7 +186,7 @@
                         </td>
                         <td class="small text-secondary font-mono">
                             {% if ap.last_rebooted %}
-                                {{ ap.last_rebooted.strftime('%d/%m/%Y %H:%M') }}
+                                {{ ap.last_rebooted }}
                             {% else %}
                                 <span class="text-muted">Belum ada</span>
                             {% endif %}
