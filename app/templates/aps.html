@@ -434,8 +434,43 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold text-secondary">Daftar IP</label>
-                        <textarea id="bulk_ips" rows="9" class="form-control font-mono" placeholder="10.154.10.4&#10;10.154.10.6&#10;10.154.10.17"></textarea>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label small fw-semibold text-secondary mb-0">
+                                <i class="bi bi-file-earmark-text text-info me-1"></i> Upload File (.txt / .csv)
+                            </label>
+                            <span id="fileUploadBadge" class="badge font-mono d-none" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);"></span>
+                        </div>
+                        
+                        <div class="p-3 rounded-3 text-center position-relative mb-2" 
+                             id="bulkDropZone" 
+                             onclick="document.getElementById('bulkFileInput').click()"
+                             ondragover="handleBulkDragOver(event)" 
+                             ondragleave="handleBulkDragLeave(event)" 
+                             ondrop="handleBulkFileDrop(event)"
+                             style="border: 2px dashed rgba(6, 182, 212, 0.35); background: rgba(6, 182, 212, 0.03); cursor: pointer; transition: all 0.2s ease;">
+                            <input type="file" id="bulkFileInput" accept=".txt,.csv,text/plain,text/csv" class="d-none" onchange="handleBulkFileSelect(event)">
+                            <div class="d-flex flex-column align-items-center justify-content-center py-2">
+                                <div class="p-2 rounded-circle mb-2" style="background: rgba(6, 182, 212, 0.12); color: #22d3ee; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+                                    <i class="bi bi-cloud-arrow-up fs-4"></i>
+                                </div>
+                                <div class="small fw-semibold text-light mb-1">
+                                    Klik di sini untuk upload <span class="text-info">file .txt</span> atau drag & drop ke area ini
+                                </div>
+                                <div class="text-secondary" style="font-size: 0.75rem;">
+                                    Format teks: Satu baris satu IP (contoh: <code>10.154.10.4</code>) atau dipisah koma (contoh: <code>10.154.10.4, AP Ruang 101</code>)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label small fw-semibold text-secondary mb-0">Daftar IP (Hasil Upload atau Tempel Manual)</label>
+                            <button type="button" class="btn btn-link btn-sm text-secondary p-0 text-decoration-none" onclick="clearBulkInput()">
+                                <i class="bi bi-x-circle me-1"></i>Bersihkan
+                            </button>
+                        </div>
+                        <textarea id="bulk_ips" rows="7" class="form-control font-mono" placeholder="10.154.10.4&#10;10.154.10.6&#10;10.154.10.17"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -776,6 +811,80 @@ async function deleteAP(id, name, ip) {
         } catch (err) {
             CustomSwal.fire('Error', String(err), 'error');
         }
+    }
+}
+
+function handleBulkDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zone = document.getElementById('bulkDropZone');
+    if (zone) {
+        zone.style.borderColor = '#22d3ee';
+        zone.style.background = 'rgba(6, 182, 212, 0.12)';
+    }
+}
+
+function handleBulkDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const zone = document.getElementById('bulkDropZone');
+    if (zone) {
+        zone.style.borderColor = 'rgba(6, 182, 212, 0.35)';
+        zone.style.background = 'rgba(6, 182, 212, 0.03)';
+    }
+}
+
+function handleBulkFileDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    handleBulkDragLeave(e);
+    if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        processUploadedTxt(e.dataTransfer.files[0]);
+    }
+}
+
+function handleBulkFileSelect(e) {
+    if (e.target.files && e.target.files.length > 0) {
+        processUploadedTxt(e.target.files[0]);
+    }
+}
+
+function processUploadedTxt(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        const text = evt.target.result;
+        document.getElementById('bulk_ips').value = text;
+
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+        const badge = document.getElementById('fileUploadBadge');
+        if (badge) {
+            badge.textContent = `${file.name} (${lines.length} baris)`;
+            badge.classList.remove('d-none');
+        }
+
+        CustomSwal.fire({
+            icon: 'success',
+            title: 'File Dimuat!',
+            text: `Berhasil membaca ${lines.length} baris IP dari file "${file.name}".`,
+            timer: 2000,
+            showConfirmButton: false
+        });
+    };
+    reader.onerror = function() {
+        CustomSwal.fire('Gagal Membaca File', 'Terjadi kesalahan saat membaca file teks.', 'error');
+    };
+    reader.readAsText(file);
+}
+
+function clearBulkInput() {
+    document.getElementById('bulk_ips').value = '';
+    const fileInput = document.getElementById('bulkFileInput');
+    if (fileInput) fileInput.value = '';
+    const badge = document.getElementById('fileUploadBadge');
+    if (badge) {
+        badge.textContent = '';
+        badge.classList.add('d-none');
     }
 }
 

@@ -724,9 +724,22 @@ async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Sessi
         if not cleaned or cleaned.startswith("#"):
             continue
 
-        parts = [p.strip() for p in cleaned.split(",")]
-        ip = parts[0]
-        name = parts[1] if len(parts) > 1 else f"AP {ip}"
+        # Support comma, semicolon, or tab separator
+        if "," in cleaned:
+            parts = [p.strip() for p in cleaned.split(",", 1)]
+        elif ";" in cleaned:
+            parts = [p.strip() for p in cleaned.split(";", 1)]
+        elif "\t" in cleaned:
+            parts = [p.strip() for p in cleaned.split("\t", 1)]
+        else:
+            parts = [cleaned]
+
+        ip = parts[0].strip().strip('"').strip("'")
+        # Lewati header (misal: "ip", "ip address", "alamat ip")
+        if ip.lower().startswith("ip") and not any(c.isdigit() for c in ip):
+            continue
+
+        name = parts[1].strip().strip('"').strip("'") if len(parts) > 1 and parts[1].strip() else f"AP {ip}"
 
         existing = db.query(AccessPoint).filter(AccessPoint.ip == ip).first()
         if existing:
