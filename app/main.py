@@ -176,13 +176,18 @@ async def handle_logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
+def get_google_redirect_uri(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}/auth/google/callback"
+
 @app.get("/auth/google/login")
 async def google_login(request: Request, db: Session = Depends(get_db)):
     client_id = get_setting(db, "google_client_id") or os.environ.get("GOOGLE_CLIENT_ID", "")
     if not client_id:
         return RedirectResponse("/login?error=Google+OAuth+belum+dikonfigurasi.+Silakan+masukkan+Google+Client+ID+di+menu+Pengaturan+Sistem.", status_code=status.HTTP_303_SEE_OTHER)
 
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    redirect_uri = get_google_redirect_uri(request)
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -202,7 +207,7 @@ async def google_callback(request: Request, code: Optional[str] = None, error: O
 
     client_id = get_setting(db, "google_client_id") or os.environ.get("GOOGLE_CLIENT_ID", "")
     client_secret = get_setting(db, "google_client_secret") or os.environ.get("GOOGLE_CLIENT_SECRET", "")
-    redirect_uri = str(request.base_url).rstrip("/") + "/auth/google/callback"
+    redirect_uri = get_google_redirect_uri(request)
 
     try:
         token_res = requests.post(
