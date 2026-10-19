@@ -282,5 +282,26 @@ async function handleSaveSettings(event) {
         CustomSwal.fire('Error', String(err), 'error');
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const redirectInput = document.getElementById('googleRedirectUri');
+    if (redirectInput) {
+        redirectInput.value = window.location.origin + '/auth/google/callback';
+    }
+});
+
+function copyRedirectUri() {
+    const redirectInput = document.getElementById('googleRedirectUri');
+    if (!redirectInput) return;
+    navigator.clipboard.writeText(redirectInput.value).then(() => {
+        const Toast = CustomSwal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 1500
+        });
+        Toast.fire({ icon: 'success', title: 'Redirect URI disalin!' });
+    });
+}
 </script>
 {% endblock %}
