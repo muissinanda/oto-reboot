@@ -22,6 +22,11 @@ def execute_scheduled_reboot(schedule_id: int):
         target_aps = []
         if schedule.target_type == "all":
             target_aps = db.query(AccessPoint).filter(AccessPoint.is_active == True).all()
+        elif schedule.target_type == "site":
+            target_aps = db.query(AccessPoint).filter(
+                AccessPoint.is_active == True,
+                AccessPoint.site == schedule.target_payload
+            ).all()
         elif schedule.target_type == "group":
             target_aps = db.query(AccessPoint).filter(
                 AccessPoint.is_active == True,

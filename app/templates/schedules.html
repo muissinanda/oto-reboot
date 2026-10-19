@@ -70,6 +70,10 @@
                                 <span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">
                                     <i class="bi bi-hdd-stack"></i> Semua AP Aktif
                                 </span>
+                            {% elif s.target_type == 'site' %}
+                                <span class="badge" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.25);">
+                                    <i class="bi bi-building"></i> Site: {{ s.target_payload }}
+                                </span>
                             {% elif s.target_type == 'group' %}
                                 <span class="badge" style="background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25);">
                                     <i class="bi bi-folder"></i> Grup: {{ s.target_payload }}
@@ -157,13 +161,23 @@
                         <label class="form-label small fw-semibold text-secondary">Target AP</label>
                         <select name="target_type" id="targetTypeSelect" class="form-select" onchange="handleTargetTypeChange(this.value)">
                             <option value="all">Semua AP Aktif</option>
-                            <option value="group">Grup Tertentu</option>
+                            <option value="site">Site / Fakultas Tertentu</option>
+                            <option value="group">Sub-Grup Tertentu</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 d-none" id="siteSelectContainer">
+                        <label class="form-label small fw-semibold text-secondary">Pilih Site / Fakultas</label>
+                        <select name="target_site" id="targetSiteSelect" class="form-select">
+                            {% for s in sites %}
+                                <option value="{{ s }}">{{ s }}</option>
+                            {% endfor %}
                         </select>
                     </div>
 
                     <div class="mb-3 d-none" id="groupSelectContainer">
-                        <label class="form-label small fw-semibold text-secondary">Pilih Grup</label>
-                        <select name="target_group" class="form-select">
+                        <label class="form-label small fw-semibold text-secondary">Pilih Sub-Grup</label>
+                        <select name="target_group" id="targetGroupSelect" class="form-select">
                             {% for g in groups %}
                                 <option value="{{ g }}">{{ g }}</option>
                             {% endfor %}
@@ -183,24 +197,37 @@
 {% block extra_scripts %}
 <script>
 function handleTargetTypeChange(val) {
+    const siteCont = document.getElementById('siteSelectContainer');
     const groupCont = document.getElementById('groupSelectContainer');
-    if (val === 'group') {
+    siteCont.classList.add('d-none');
+    groupCont.classList.add('d-none');
+
+    if (val === 'site') {
+        siteCont.classList.remove('d-none');
+    } else if (val === 'group') {
         groupCont.classList.remove('d-none');
-    } else {
-        groupCont.classList.add('d-none');
     }
 }
 
 async function handleAddSchedule(event) {
     event.preventDefault();
     const formData = new FormData(event.target);
+    const targetType = formData.get('target_type');
+    let targetPayload = '';
+
+    if (targetType === 'site') {
+        targetPayload = formData.get('target_site');
+    } else if (targetType === 'group') {
+        targetPayload = formData.get('target_group');
+    }
+
     const data = {
         name: formData.get('name'),
         hour: parseInt(formData.get('hour')),
         minute: parseInt(formData.get('minute')),
         days_of_week: formData.get('days_of_week'),
-        target_type: formData.get('target_type'),
-        target_payload: formData.get('target_type') === 'group' ? formData.get('target_group') : ''
+        target_type: targetType,
+        target_payload: targetPayload
     };
 
     try {
