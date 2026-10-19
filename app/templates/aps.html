@@ -472,6 +472,13 @@
                         </div>
                         <textarea id="bulk_ips" rows="7" class="form-control font-mono" placeholder="10.154.10.4&#10;10.154.10.6&#10;10.154.10.17"></textarea>
                     </div>
+
+                    <div class="form-check form-switch mb-2 p-2 rounded-2" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07);">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" id="bulk_update_existing" checked style="cursor: pointer;">
+                        <label class="form-check-label small text-secondary" for="bulk_update_existing" style="cursor: pointer;">
+                            <span class="text-light fw-semibold"><i class="bi bi-arrow-repeat text-info me-1"></i>Update Otomatis:</span> Perbarui Nama AP & Sub-Grup jika IP sudah ada sebelumnya di sistem
+                        </label>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
@@ -894,6 +901,7 @@ async function handleBulkImport(event) {
     const targetSite = document.getElementById('bulk_site').value;
     const targetVendor = document.getElementById('bulk_device_type').value;
     const defaultGroup = document.getElementById('bulk_group').value;
+    const updateExisting = document.getElementById('bulk_update_existing') ? document.getElementById('bulk_update_existing').checked : true;
 
     if (!rawIps.trim()) {
         CustomSwal.fire('Peringatan', 'Harap masukkan daftar IP', 'warning');
@@ -915,12 +923,19 @@ async function handleBulkImport(event) {
                 raw_text: rawIps, 
                 device_type: targetVendor,
                 site: targetSite, 
-                group: defaultGroup 
+                group: defaultGroup,
+                update_existing: updateExisting
             })
         });
         const result = await res.json();
         if (result.status === 'success') {
-            CustomSwal.fire('Import Berhasil!', result.message, 'success').then(() => location.reload());
+            CustomSwal.fire({
+                icon: 'success',
+                title: 'Import Selesai!',
+                html: result.message,
+                confirmButtonColor: '#06b6d4',
+                confirmButtonText: 'Sip, Muat Ulang'
+            }).then(() => location.reload());
         } else {
             CustomSwal.fire('Gagal!', result.message, 'error');
         }

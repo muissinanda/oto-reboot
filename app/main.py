@@ -68,6 +68,7 @@ class BulkImportSchema(BaseModel):
     device_type: Optional[str] = "unifi"
     site: Optional[str] = "Fasilkom"
     group: Optional[str] = "Default"
+    update_existing: Optional[bool] = True
 
 class ScheduleCreateSchema(BaseModel):
     name: str
@@ -710,14 +711,21 @@ async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Sessi
     if not user:
         return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
 
-    site_name = payload.site.strip() if payload.site else (user.allowed_sites.split(',')[0].strip() if user.allowed_sites and user.allowed_sites != '*' else "Fasilkom")
+    raw_site = payload.site.strip() if payload.site else (user.allowed_sites.split(',')[0].strip() if user.allowed_sites and user.allowed_sites != '*' else "Fasilkom")
+    
+    # Samakan kapitalisasi jika site sudah terdaftar di DB (contoh: FASILKOM -> Fasilkom)
+    existing_site_match = db.query(AccessPoint.site).filter(AccessPoint.site.ilike(raw_site)).first()
+    site_name = existing_site_match[0] if (existing_site_match and existing_site_match[0]) else raw_site
+
     if not user_can_access_site(user, site_name, db=db):
         return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki izin mengimpor AP ke Site '{site_name}'."})
 
     lines = payload.raw_text.strip().splitlines()
     count_added = 0
+    count_updated = 0
     count_skipped = 0
     dev_type = payload.device_type or "unifi"
+    update_existing = payload.update_existing if payload.update_existing is not None else True
 
     for line in lines:
         cleaned = line.strip().strip(",").strip('"').strip("'")
@@ -726,11 +734,11 @@ async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Sessi
 
         # Support comma, semicolon, or tab separator
         if "," in cleaned:
-            parts = [p.strip() for p in cleaned.split(",", 1)]
+            parts = [p.strip() for p in cleaned.split(",")]
         elif ";" in cleaned:
-            parts = [p.strip() for p in cleaned.split(";", 1)]
+            parts = [p.strip() for p in cleaned.split(";")]
         elif "\t" in cleaned:
-            parts = [p.strip() for p in cleaned.split("\t", 1)]
+            parts = [p.strip() for p in cleaned.split("\t")]
         else:
             parts = [cleaned]
 
@@ -740,10 +748,18 @@ async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Sessi
             continue
 
         name = parts[1].strip().strip('"').strip("'") if len(parts) > 1 and parts[1].strip() else f"AP {ip}"
+        target_group = parts[2].strip().strip('"').strip("'") if len(parts) > 2 and parts[2].strip() else (payload.group or "Default")
 
         existing = db.query(AccessPoint).filter(AccessPoint.ip == ip).first()
         if existing:
-            count_skipped += 1
+            if update_existing:
+                existing.name = name
+                existing.site = site_name
+                existing.group = target_group
+                existing.device_type = dev_type
+                count_updated += 1
+            else:
+                count_skipped += 1
             continue
 
         new_ap = AccessPoint(
@@ -751,7 +767,7 @@ async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Sessi
             ip=ip,
             device_type=dev_type,
             site=site_name,
-            group=payload.group or "Default"
+            group=target_group
         )
         db.add(new_ap)
         count_added += 1
@@ -759,9 +775,19 @@ async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Sessi
     db.commit()
     asyncio.create_task(asyncio.to_thread(run_monitor_cycle))
 
+    result_details = []
+    if count_added > 0:
+        result_details.append(f"<b>{count_added} AP baru</b> berhasil ditambahkan")
+    if count_updated > 0:
+        result_details.append(f"<b>{count_updated} AP yang sudah ada</b> berhasil diperbarui")
+    if count_skipped > 0:
+        result_details.append(f"{count_skipped} dilewati")
+
+    summary_text = ", ".join(result_details) if result_details else "Tidak ada data yang diproses"
+
     return {
         "status": "success",
-        "message": f"Import selesai: {count_added} AP berhasil ditambahkan ke Site '{site_name}', {count_skipped} dilewati (sudah ada)."
+        "message": f"Selesai! {summary_text} pada Site '{site_name}'."
     }
 
 # ==================== API: REBOOT & SCAN (RBAC FILTERED) ====================
