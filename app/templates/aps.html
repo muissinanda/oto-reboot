@@ -13,6 +13,9 @@
         </p>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button class="btn btn-modern-outline text-danger border-danger border-opacity-25" id="deleteSelectedBtn" onclick="deleteSelectedAPs()">
+            <i class="bi bi-trash"></i> Hapus Terpilih (<span id="deleteSelectedCount" class="font-mono">0</span>)
+        </button>
         <button class="btn btn-modern-outline text-warning border-warning border-opacity-25" onclick="rebootSelectedAPs()">
             <i class="bi bi-arrow-repeat"></i> Reboot Terpilih (<span id="selectedCount" class="font-mono">0</span>)
         </button>
@@ -41,10 +44,13 @@
         {% endfor %}
     </div>
 
-    <!-- Quick action reboot current active site -->
-    <div id="siteActionBox" class="d-none">
+    <!-- Quick action reboot & delete current active site -->
+    <div id="siteActionBox" class="d-none d-flex align-items-center gap-2">
         <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-2" onclick="rebootCurrentSite()">
-            <i class="bi bi-power"></i> Reboot Semua AP di <span id="currentSiteLabel" class="fw-bold"></span>
+            <i class="bi bi-power"></i> Reboot Semua di <span id="currentSiteLabel" class="fw-bold"></span>
+        </button>
+        <button class="btn btn-sm btn-outline-danger border-opacity-50 d-flex align-items-center gap-2" onclick="deleteCurrentSiteAPs()">
+            <i class="bi bi-trash"></i> Hapus Semua di <span id="currentSiteDeleteLabel" class="fw-bold"></span>
         </button>
     </div>
 </div>
@@ -460,8 +466,10 @@ function selectSiteTab(site, btn) {
 
     const actionBox = document.getElementById('siteActionBox');
     const siteLabel = document.getElementById('currentSiteLabel');
+    const siteDeleteLabel = document.getElementById('currentSiteDeleteLabel');
     if (site) {
         siteLabel.textContent = site;
+        if (siteDeleteLabel) siteDeleteLabel.textContent = site;
         actionBox.classList.remove('d-none');
     } else {
         actionBox.classList.add('d-none');
@@ -485,6 +493,10 @@ function copyToClipboard(text) {
 function updateSelectedCount() {
     const count = document.querySelectorAll('.ap-check:checked').length;
     document.getElementById('selectedCount').textContent = count;
+    const delCount = document.getElementById('deleteSelectedCount');
+    if (delCount) {
+        delCount.textContent = count;
+    }
 }
 
 function toggleSelectAll(master) {
@@ -562,6 +574,117 @@ async function rebootCurrentSite() {
         } catch (err) {
             CustomSwal.fire('Error', String(err), 'error');
         }
+    }
+}
+
+async function deleteCurrentSiteAPs() {
+    if (!activeSiteFilter) return;
+
+    const rows = document.querySelectorAll('#apTable tbody tr');
+    const ids = [];
+    rows.forEach(row => {
+        if (row.id === 'noDataRow') return;
+        if (row.getAttribute('data-site') === activeSiteFilter) {
+            const cb = row.querySelector('.ap-check');
+            if (cb) ids.push(parseInt(cb.value));
+        }
+    });
+
+    if (ids.length === 0) {
+        CustomSwal.fire('Site Kosong', `Tidak ada Access Point di ${activeSiteFilter}.`, 'info');
+        return;
+    }
+
+    const confirm = await CustomSwal.fire({
+        title: `Hapus Seluruh AP di ${activeSiteFilter}?`,
+        text: `Sebanyak ${ids.length} Access Point di Site ${activeSiteFilter} akan dihapus secara permanen!`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: `Ya, Hapus Semua di ${activeSiteFilter}!`,
+        cancelButtonText: 'Batal'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    CustomSwal.fire({
+        title: 'Menghapus Data Site...',
+        text: 'Sedang menghapus perangkat dari database...',
+        allowOutsideClick: false,
+        didOpen: () => { CustomSwal.showLoading(); }
+    });
+
+    try {
+        const res = await fetch('/api/aps/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            CustomSwal.fire({
+                icon: 'success',
+                title: 'Berhasil Dihapus!',
+                text: data.message,
+                timer: 1800,
+                showConfirmButton: false
+            }).then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', data.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
+    }
+}
+
+async function deleteSelectedAPs() {
+    const checked = Array.from(document.querySelectorAll('.ap-check:checked')).map(cb => parseInt(cb.value));
+    if (checked.length === 0) {
+        CustomSwal.fire('Pilih AP Terlebih Dahulu', 'Centang kotak di samping AP yang ingin Anda hapus.', 'info');
+        return;
+    }
+
+    const confirm = await CustomSwal.fire({
+        title: `Hapus ${checked.length} Access Point?`,
+        text: `Sebanyak ${checked.length} AP yang dipilih akan dihapus secara permanen dari sistem.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: `Ya, Hapus ${checked.length} AP!`,
+        cancelButtonText: 'Batal'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    CustomSwal.fire({
+        title: 'Menghapus Data...',
+        text: 'Sedang menghapus perangkat dari database...',
+        allowOutsideClick: false,
+        didOpen: () => { CustomSwal.showLoading(); }
+    });
+
+    try {
+        const res = await fetch('/api/aps/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: checked })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            CustomSwal.fire({
+                icon: 'success',
+                title: 'Berhasil Dihapus!',
+                text: data.message,
+                timer: 1800,
+                showConfirmButton: false
+            }).then(() => location.reload());
+        } else {
+            CustomSwal.fire('Gagal!', data.message, 'error');
+        }
+    } catch (err) {
+        CustomSwal.fire('Error', String(err), 'error');
     }
 }
 

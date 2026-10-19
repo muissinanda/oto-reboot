@@ -80,6 +80,9 @@ class ScheduleCreateSchema(BaseModel):
 class BatchRebootSchema(BaseModel):
     ids: List[int]
 
+class BatchDeleteSchema(BaseModel):
+    ids: List[int]
+
 class UserCreateSchema(BaseModel):
     username: str
     full_name: str
@@ -675,6 +678,29 @@ async def api_delete_ap(ap_id: int, request: Request, db: Session = Depends(get_
     db.delete(ap)
     db.commit()
     return {"status": "success", "message": f"AP {name} berhasil dihapus"}
+
+@app.post("/api/aps/batch-delete")
+async def api_batch_delete_aps(payload: BatchDeleteSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Silakan login."})
+
+    if not payload.ids:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Tidak ada AP yang dipilih."})
+
+    query = db.query(AccessPoint).filter(AccessPoint.id.in_(payload.ids))
+    target_aps = filter_aps_by_user(query, user).all()
+
+    if not target_aps:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Tidak ada Access Point yang diizinkan untuk dihapus."})
+
+    count = len(target_aps)
+    for ap in target_aps:
+        db.delete(ap)
+
+    db.commit()
+    return {"status": "success", "message": f"{count} Access Point berhasil dihapus."}
+
 
 @app.post("/api/aps/bulk-import")
 async def api_bulk_import(payload: BulkImportSchema, request: Request, db: Session = Depends(get_db)):
