@@ -15,10 +15,11 @@ from sqlalchemy import desc
 from app.database import (
     init_db, get_db, SessionLocal,
     AccessPoint, RebootSchedule, RebootLog, AppSetting, User,
-    NetworkDevice, DeviceInterface, NetworkTrafficHistory,
+    NetworkDevice, DeviceInterface, DeviceBgpPeer, NetworkTrafficHistory,
     get_setting, set_setting, hash_password, verify_password,
     now_wib
 )
+from app.snmp_service import lookup_asn_name
 from app.seed import seed_initial_aps
 from app.scheduler import setup_scheduler, reload_scheduler_jobs, execute_scheduled_reboot
 from app.ssh_worker import execute_ssh_reboot, reboot_aps_batch
@@ -585,6 +586,10 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
             "rx_percent": rx_pct,
             "tx_percent": tx_pct,
             "top_interface": top_iface_str,
+            "bgp_peer_count": d.bgp_peer_count or 0,
+            "bgp_established_count": d.bgp_established_count or 0,
+            "bgp_local_as": d.bgp_local_as,
+            "bgp_router_id": d.bgp_router_id,
             "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "Belum ada"
         })
 
@@ -723,6 +728,10 @@ def get_nms_telemetry_payload(db: Session):
             "rx_percent": rx_pct,
             "tx_percent": tx_pct,
             "top_interface": top_iface_str,
+            "bgp_peer_count": d.bgp_peer_count or 0,
+            "bgp_established_count": d.bgp_established_count or 0,
+            "bgp_local_as": d.bgp_local_as,
+            "bgp_router_id": d.bgp_router_id,
             "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "-"
         })
 
@@ -1498,6 +1507,28 @@ async def api_get_device_interfaces(device_id: int, request: Request, db: Sessio
             "last_updated": iface.last_updated.strftime("%d/%m/%Y %H:%M:%S") if iface.last_updated else "-"
         })
     
+    peers = db.query(DeviceBgpPeer).filter(DeviceBgpPeer.device_id == dev.id).all()
+    bgp_data = []
+    for p in peers:
+        bgp_data.append({
+            "id": p.id,
+            "peer_ip": p.peer_ip,
+            "remote_as": p.remote_as,
+            "as_name": p.as_name or lookup_asn_name(p.remote_as) or "Unknown AS",
+            "state": p.state,
+            "is_established": (p.state.lower() == "established"),
+            "admin_status": p.admin_status,
+            "in_updates": p.in_updates or 0,
+            "out_updates": p.out_updates or 0,
+            "in_total_messages": p.in_total_messages or 0,
+            "out_total_messages": p.out_total_messages or 0,
+            "fsm_established_time": p.fsm_established_time or 0,
+            "uptime": p.uptime or "-",
+            "accepted_prefixes": p.accepted_prefixes,
+            "description": p.description or "",
+            "last_updated": p.last_updated.strftime("%d/%m/%Y %H:%M:%S") if p.last_updated else "-"
+        })
+
     return {
         "status": "success",
         "device": {
@@ -1512,9 +1543,64 @@ async def api_get_device_interfaces(device_id: int, request: Request, db: Sessio
             "memory_used_mb": dev.memory_used_mb,
             "temperature": dev.temperature,
             "voltage": dev.voltage,
+            "bgp_peer_count": dev.bgp_peer_count or len(peers),
+            "bgp_established_count": dev.bgp_established_count or sum(1 for p in peers if p.state == "established"),
+            "bgp_local_as": dev.bgp_local_as,
+            "bgp_router_id": dev.bgp_router_id,
             "last_polled": dev.last_polled.strftime("%d/%m/%Y %H:%M:%S") if dev.last_polled else "-"
         },
-        "interfaces": data
+        "interfaces": data,
+        "bgp_peers": bgp_data
+    }
+
+@app.get("/api/nms/devices/{device_id}/bgp")
+async def api_get_device_bgp(device_id: int, request: Request, db: Session = Depends(get_db)):
+    """Detail khusus sesi BGP Peer untuk perangkat target"""
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    dev = db.query(NetworkDevice).filter(NetworkDevice.id == device_id).first()
+    if not dev:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Perangkat tidak ditemukan"})
+    
+    if not user_can_access_site(user, dev.site):
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak"})
+    
+    peers = db.query(DeviceBgpPeer).filter(DeviceBgpPeer.device_id == dev.id).all()
+    bgp_data = []
+    for p in peers:
+        bgp_data.append({
+            "id": p.id,
+            "peer_ip": p.peer_ip,
+            "remote_as": p.remote_as,
+            "as_name": p.as_name or lookup_asn_name(p.remote_as) or "Unknown AS",
+            "state": p.state,
+            "is_established": (p.state.lower() == "established"),
+            "admin_status": p.admin_status,
+            "in_updates": p.in_updates or 0,
+            "out_updates": p.out_updates or 0,
+            "in_total_messages": p.in_total_messages or 0,
+            "out_total_messages": p.out_total_messages or 0,
+            "fsm_established_time": p.fsm_established_time or 0,
+            "uptime": p.uptime or "-",
+            "accepted_prefixes": p.accepted_prefixes,
+            "description": p.description or "",
+            "last_updated": p.last_updated.strftime("%d/%m/%Y %H:%M:%S") if p.last_updated else "-"
+        })
+
+    return {
+        "status": "success",
+        "device": {
+            "id": dev.id,
+            "name": dev.name,
+            "ip": dev.ip,
+            "bgp_peer_count": dev.bgp_peer_count or len(peers),
+            "bgp_established_count": dev.bgp_established_count or sum(1 for p in peers if p.state == "established"),
+            "bgp_local_as": dev.bgp_local_as,
+            "bgp_router_id": dev.bgp_router_id
+        },
+        "bgp_peers": bgp_data
     }
 
 @app.get("/api/nms/public/telemetry")

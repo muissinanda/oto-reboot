@@ -15,19 +15,60 @@ from pysnmp.hlapi.asyncio import (
     bulk_walk_cmd
 )
 
-from app.database import SessionLocal, NetworkDevice, DeviceInterface, NetworkTrafficHistory, now_wib
+from app.database import SessionLocal, NetworkDevice, DeviceInterface, DeviceBgpPeer, NetworkTrafficHistory, now_wib
 
 # Standard System OIDs (RFC 1213)
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_SYS_UPTIME = "1.3.6.1.2.1.1.3.0"
 OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
 
-# Host Resources MIB (Standard RFC 2790 for Linux, AP, MikroTik)
+# Host Resources MIB (Standard RFC 2790 for Linux, AP, MikroTik, Juniper)
 OID_HR_PROCESSOR_LOAD = "1.3.6.1.2.1.25.3.3.1.2"      # CPU Cores load table
 OID_HR_STORAGE_DESCR = "1.3.6.1.2.1.25.2.3.1.3"       # Storage Descr (RAM)
 OID_HR_STORAGE_ALLOC_UNITS = "1.3.6.1.2.1.25.2.3.1.4" # Storage Allocation Units
 OID_HR_STORAGE_SIZE = "1.3.6.1.2.1.25.2.3.1.5"        # Storage Total Units
 OID_HR_STORAGE_USED = "1.3.6.1.2.1.25.2.3.1.6"        # Storage Used Units
+
+# BGP4-MIB (RFC 4273 / RFC 1657 - Universal Standard for Juniper, MikroTik, Cisco, Linux)
+OID_BGP_LOCAL_AS = "1.3.6.1.2.1.15.2.0"                  # Local Autonomous System
+OID_BGP_IDENTIFIER = "1.3.6.1.2.1.15.4.0"                # BGP Router-ID (IPv4)
+OID_BGP_PEER_STATE = "1.3.6.1.2.1.15.3.1.2"              # 1:idle, 2:connect, 3:active, 4:opensent, 5:openconfirm, 6:established
+OID_BGP_PEER_ADMIN_STATUS = "1.3.6.1.2.1.15.3.1.3"       # 1:stop, 2:start
+OID_BGP_PEER_REMOTE_AS = "1.3.6.1.2.1.15.3.1.9"          # Remote ASN
+OID_BGP_PEER_IN_UPDATES = "1.3.6.1.2.1.15.3.1.10"        # In Updates
+OID_BGP_PEER_OUT_UPDATES = "1.3.6.1.2.1.15.3.1.11"       # Out Updates
+OID_BGP_PEER_IN_MSGS = "1.3.6.1.2.1.15.3.1.12"           # In Total Messages
+OID_BGP_PEER_OUT_MSGS = "1.3.6.1.2.1.15.3.1.13"          # Out Total Messages
+OID_BGP_PEER_EST_TIME = "1.3.6.1.2.1.15.3.1.16"          # Elapsed Time in Established (seconds)
+
+# Juniper BGP Prefix MIB (BGP4-V2-MIB-JUNIPER)
+OID_JNX_BGP_PREFIX_ACCEPTED = "1.3.6.1.4.1.2636.5.1.1.2.6.2.1.8" # Accepted Prefixes
+OID_JNX_BGP_PREFIX_TOTAL = "1.3.6.1.4.1.2636.5.1.1.2.6.2.1.7"    # Total In-Prefixes
+OID_CISCO_BGP_PREFIX_ACCEPTED = "1.3.6.1.4.1.9.9.187.1.2.4.1.1" # Cisco BGP Accepted Prefixes
+
+# Juniper Operating Sensors (JUNIPER-MIB - Routing Engine, FPC, Chassis)
+OID_JNX_OPERATING_CPU = "1.3.6.1.4.1.2636.3.1.13.1.8"     # CPU % (Routing Engine 0 index .9.1.0.0 dll)
+OID_JNX_OPERATING_TEMP = "1.3.6.1.4.1.2636.3.1.13.1.7"    # Temperature (°C)
+OID_JNX_OPERATING_BUFFER = "1.3.6.1.4.1.2636.3.1.13.1.11" # Buffer / Memory pool %
+OID_JNX_OPERATING_DRAM = "1.3.6.1.4.1.2636.3.1.13.1.12"   # Installed DRAM bytes
+
+# Juniper Digital Optical Monitoring (JUNIPER-DOM-MIB - SFP/XFP/QSFP Transceivers)
+OID_JNX_DOM_TEMP = "1.3.6.1.4.1.2636.3.60.1.1.1.1.2"      # Transceiver Temp (°C)
+OID_JNX_DOM_VOLT = "1.3.6.1.4.1.2636.3.60.1.1.1.1.3"      # Transceiver Voltage (mV)
+OID_JNX_DOM_TX_PWR = "1.3.6.1.4.1.2636.3.60.1.1.1.1.4"    # Tx Power (0.01 dBm)
+OID_JNX_DOM_RX_PWR = "1.3.6.1.4.1.2636.3.60.1.1.1.1.5"    # Rx Power / Redaman (0.01 dBm)
+OID_JNX_DOM_TX_LOS = "1.3.6.1.4.1.2636.3.60.1.1.1.1.6"    # Tx Loss of Signal (1=True)
+OID_JNX_DOM_RX_LOS = "1.3.6.1.4.1.2636.3.60.1.1.1.1.7"    # Rx Loss of Signal (1=True, 2=False)
+
+# Cisco Hardware Sensors
+OID_CISCO_CPU_5MIN = "1.3.6.1.4.1.9.9.109.1.1.1.1.5"      # 5-min CPU %
+OID_CISCO_CPU_OLD = "1.3.6.1.4.1.9.2.1.56.0"              # Legacy avgBusy5
+OID_CISCO_TEMP = "1.3.6.1.4.1.9.9.13.1.3.1.3"             # ciscoEnvMonTemperature (°C)
+OID_CISCO_MEM_USED = "1.3.6.1.4.1.9.9.48.1.1.1.5"         # Memory Pool Used bytes
+OID_CISCO_MEM_FREE = "1.3.6.1.4.1.9.9.48.1.1.1.6"         # Memory Pool Free bytes
+
+# Entity Sensor MIB (RFC 3433)
+OID_ENT_PHY_SENSOR_VALUE = "1.3.6.1.2.1.99.1.1.1.4"        # Temperature / Fan / Power values
 
 # MikroTik Health (RouterOS 7 Table)
 OID_MT_HEALTH_NAME = "1.3.6.1.4.1.14988.1.1.3.100.1.2"   # Health sensor names
@@ -68,6 +109,48 @@ OID_MT_OPT_VENDOR = "1.3.6.1.4.1.14988.1.1.19.1.1.11"     # Merk / Vendor SFP
 OID_MT_OPT_SERIAL = "1.3.6.1.4.1.14988.1.1.19.1.1.12"     # Serial Number SFP
 OID_MT_OPT_REVISION = "1.3.6.1.4.1.14988.1.1.19.1.1.13"   # Revision SFP (A0)
 OID_MT_OPT_PART = "1.3.6.1.4.1.14988.1.1.19.1.1.14"       # Part Number SFP (SFP-10G-LH-SM)
+
+# Well-Known AS Numbers Directory
+KNOWN_ASNS = {
+    13335: "Cloudflare",
+    15169: "Google",
+    7713: "Telkom Indonesia",
+    24203: "Telkomsel",
+    17995: "Indosat Ooredoo",
+    23947: "Moratelindo (Oxygen)",
+    4761: "Indonet",
+    55688: "APJII / IIX",
+    131755: "OpenIXP",
+    24522: "Biznet Networks",
+    9341: "Cyberindo Aditama (CBN)",
+    136052: "Cyber Network Indonesia",
+    38781: "Link Net / First Media",
+    45727: "XL Axiata",
+    20940: "Akamai",
+    32934: "Meta (Facebook)",
+    8075: "Microsoft",
+    16509: "Amazon (AWS)",
+    13414: "Twitter / X",
+    2635: "APNIC",
+    4637: "Telstra",
+    6939: "Hurricane Electric",
+    3356: "Lumen / Level3",
+    2914: "NTT Communications",
+    6453: "Tata Communications",
+    174: "Cogent",
+    9002: "RETN",
+    1299: "Arelion / Telia",
+    37963: "Alibaba Cloud",
+    45102: "Alibaba Cloud",
+    132203: "Tencent Cloud",
+    24086: "CBN Nusantara",
+}
+
+def lookup_asn_name(asn: Optional[int]) -> Optional[str]:
+    """Mengembalikan nama provider AS yang terkenal jika terdaftar"""
+    if not asn:
+        return None
+    return KNOWN_ASNS.get(asn)
 
 def parse_optical_power(val: Any) -> Optional[float]:
     """Konversi nilai optical power ke format dBm standar (di MikroTik 0.001 dBm)"""
@@ -134,22 +217,22 @@ def determine_port_speed(if_name: str, high_speed: Optional[int]) -> str:
         if high_speed >= 10000:
             return "10G SFP+"
         if high_speed >= 1000:
-            if "sfpplus" in n or "sfp+" in n:
+            if "sfpplus" in n or "sfp+" in n or n.startswith("xe-"):
                 return "10G SFP+"
-            return "1G SFP" if "sfp" in n else "1 Gbps"
+            return "1G SFP" if ("sfp" in n or n.startswith("ge-")) else "1 Gbps"
         if high_speed >= 100:
             return "100 Mbps"
     
-    # Deteksi berbasis nama port router (CCR2004, CRS, dll)
-    if "sfp28" in n or "25g" in n:
-        return "25G SFP28"
-    if "sfpplus" in n or "sfp+" in n or "10g" in n:
-        return "10G SFP+"
-    if "qsfp28" in n or "100g" in n:
+    # Deteksi berbasis nama port router (Juniper xe/ge/et, MikroTik CCR2004, CRS, Cisco Te/Gi/Hu)
+    if n.startswith("et-") or "qsfp28" in n or "100g" in n or n.startswith("hu") or n.startswith("fo"):
         return "100G QSFP28"
-    if "qsfp" in n or "40g" in n:
+    if "sfp28" in n or "25g" in n or n.startswith("tf") or n.startswith("twentyfive"):
+        return "25G SFP28"
+    if n.startswith("xe-") or "sfpplus" in n or "sfp+" in n or "10g" in n or n.startswith("te") or n.startswith("ten"):
+        return "10G SFP+"
+    if "qsfp" in n or "40g" in n or n.startswith("fo"):
         return "40G QSFP+"
-    if "sfp" in n:
+    if n.startswith("ge-") or "sfp" in n or n.startswith("gi") or n.startswith("gig"):
         return "1G SFP"
     if "ether" in n:
         return "1 Gbps"
@@ -183,7 +266,7 @@ def classify_interface_type(name: str, if_type_num: int = 0) -> str:
         return "backbone"
     if any(k in n for k in ["wlan", "wifi", "ath"]):
         return "wireless"
-    if any(k in n for k in ["ether", "sfp", "ge", "fa", "port"]) or if_type_num == 6:
+    if any(k in n for k in ["ether", "sfp", "ge-", "xe-", "et-", "ge", "xe", "fa", "gi", "te", "port"]) or if_type_num == 6:
         return "ethernet"
     return "other"
 
@@ -332,8 +415,17 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                 val = varBind[1]
                 if oid_str.startswith(OID_SYS_DESCR[:-2]):
                     raw_descr = str(val)
-                    if any(k in raw_descr for k in ["RouterOS", "MikroTik", "RB"]):
+                    raw_lower = raw_descr.lower()
+                    if any(k in raw_lower for k in ["routeros", "mikrotik", "rb"]):
                         dev.device_type = "mikrotik"
+                    elif any(k in raw_lower for k in ["juniper", "junos", "jnp"]):
+                        dev.device_type = "juniper"
+                    elif any(k in raw_lower for k in ["cisco", "ios"]):
+                        dev.device_type = "cisco"
+                    elif any(k in raw_lower for k in ["huawei", "vrp"]):
+                        dev.device_type = "huawei"
+                    elif any(k in raw_lower for k in ["linux", "ubuntu", "debian", "alpine"]):
+                        dev.device_type = "linux"
                     dev.model_info = raw_descr[:250]
                 elif oid_str.startswith(OID_SYS_UPTIME[:-2]):
                     try:
@@ -352,11 +444,10 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
             return False, f"Exception saat get dasar: {str(e)}"
 
         # -----------------------------------------------------------------
-        # LANGKAH 2: SUHU & TEGANGAN (ROUTEROS 7 TABLE & ROS 6 LEGACY)
-        # Dibungkus try-except agar kegagalan OID proprietary tidak merusak poll
+        # LANGKAH 2: SUHU & TEGANGAN (ROUTEROS, JUNIPER, CISCO, ENTITY MIB)
         # -----------------------------------------------------------------
         try:
-            # 2a. Coba RouterOS 7 Health Item Table
+            # 2a. RouterOS 7 Health Item Table
             h_names = await walk_oid_column(snmp_engine, auth_data, transport, OID_MT_HEALTH_NAME, 20)
             if h_names:
                 h_vals = await walk_oid_column(snmp_engine, auth_data, transport, OID_MT_HEALTH_VALUE, 20)
@@ -366,19 +457,17 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     if val_raw is not None:
                         try:
                             num_val = float(val_raw)
-                            # Suhu (CPU atau Board)
                             if "temp" in name_str and num_val > 0:
                                 parsed_t = round(num_val / 10.0 if num_val > 150 else num_val, 1)
                                 if "cpu" in name_str or dev.temperature is None:
                                     dev.temperature = parsed_t
-                            # Voltase
                             elif "volt" in name_str and num_val > 0:
                                 parsed_v = round(num_val / 10.0 if num_val > 50 else num_val, 1)
                                 dev.voltage = parsed_v
                         except Exception:
                             pass
 
-            # 2b. Fallback legacy RouterOS 6 OIDs jika suhu/voltase masih kosong
+            # 2b. RouterOS 6 Legacy OIDs
             if dev.temperature is None or dev.voltage is None:
                 err_ind, err_stat, _, vbs = await get_cmd(
                     snmp_engine,
@@ -403,26 +492,92 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                                 dev.voltage = round(f_val / 10.0 if f_val > 50 else f_val, 1)
                         except Exception:
                             pass
+
+            # 2c. Juniper Operating Temperature (JUNIPER-MIB: jnxOperatingTemp)
+            if dev.temperature is None:
+                jnx_temps = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_TEMP, 20)
+                if jnx_temps:
+                    valid_temps = []
+                    for t_idx, t_val in jnx_temps.items():
+                        try:
+                            f_t = float(t_val)
+                            if 15.0 <= f_t <= 115.0:
+                                valid_temps.append((str(t_idx), f_t))
+                        except Exception:
+                            pass
+                    if valid_temps:
+                        re_temps = [t for idx_s, t in valid_temps if any(x in idx_s for x in ["9.1", "7.1", "1.1"])]
+                        chosen_t = re_temps[0] if re_temps else max(t for _, t in valid_temps)
+                        dev.temperature = round(chosen_t, 1)
+
+            # 2d. Cisco Temperature Sensor
+            if dev.temperature is None:
+                err_ind, err_stat, _, c_vbs = await get_cmd(
+                    snmp_engine, auth_data, transport, ContextData(),
+                    ObjectType(ObjectIdentity(OID_CISCO_TEMP))
+                )
+                if not err_ind and not err_stat and c_vbs:
+                    try:
+                        c_t = float(c_vbs[0][1])
+                        if 15.0 <= c_t <= 115.0:
+                            dev.temperature = round(c_t, 1)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
         # -----------------------------------------------------------------
-        # LANGKAH 3: CPU & MEMORY USAGE
+        # LANGKAH 3: CPU & MEMORY USAGE (JUNIPER, MIKROTIK, CISCO, HOST-RESOURCES)
         # -----------------------------------------------------------------
         try:
-            # 3a. CPU Load via Host Resources MIB (hrProcessorLoad - multi-core support)
-            cpu_cores = await walk_oid_column(snmp_engine, auth_data, transport, OID_HR_PROCESSOR_LOAD, 16)
-            if cpu_cores:
-                loads = []
-                for _, core_load in cpu_cores.items():
-                    try:
-                        loads.append(float(core_load))
-                    except Exception:
-                        pass
-                if loads:
-                    dev.cpu_usage = round(sum(loads) / len(loads), 1)
+            # 3a. CPU Load: Prioritaskan Juniper jnxOperatingCPU jika perangkat Juniper
+            if dev.device_type == "juniper" or dev.cpu_usage is None or dev.cpu_usage == 0.0:
+                jnx_cpus = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_CPU, 20)
+                if jnx_cpus:
+                    valid_cpus = []
+                    for c_idx, c_val in jnx_cpus.items():
+                        try:
+                            f_c = float(c_val)
+                            if 0.0 <= f_c <= 100.0:
+                                valid_cpus.append((str(c_idx), f_c))
+                        except Exception:
+                            pass
+                    if valid_cpus:
+                        re_cpus = [c for idx_s, c in valid_cpus if any(x in idx_s for x in ["9.1", "7.1", "1.1"])]
+                        chosen_cpu = re_cpus[0] if re_cpus else max(c for _, c in valid_cpus)
+                        dev.cpu_usage = round(chosen_cpu, 1)
 
-            # Fallback legacy MikroTik CPU scalar jika belum dapat
+            # CPU Load via Host Resources MIB (hrProcessorLoad - multi-core support)
+            if dev.cpu_usage is None:
+                cpu_cores = await walk_oid_column(snmp_engine, auth_data, transport, OID_HR_PROCESSOR_LOAD, 16)
+                if cpu_cores:
+                    loads = []
+                    for _, core_load in cpu_cores.items():
+                        try:
+                            loads.append(float(core_load))
+                        except Exception:
+                            pass
+                    if loads:
+                        dev.cpu_usage = round(sum(loads) / len(loads), 1)
+
+            # Cisco CPU Fallback (5-min average)
+            if dev.cpu_usage is None:
+                err_ind, err_stat, _, c_vbs = await get_cmd(
+                    snmp_engine, auth_data, transport, ContextData(),
+                    ObjectType(ObjectIdentity(OID_CISCO_CPU_5MIN)),
+                    ObjectType(ObjectIdentity(OID_CISCO_CPU_OLD))
+                )
+                if not err_ind and not err_stat and c_vbs:
+                    for vb in c_vbs:
+                        try:
+                            f_c = float(vb[1])
+                            if 0.0 <= f_c <= 100.0:
+                                dev.cpu_usage = round(f_c, 1)
+                                break
+                        except Exception:
+                            pass
+
+            # Fallback legacy MikroTik CPU scalar
             if dev.cpu_usage is None:
                 err_ind, err_stat, _, vbs = await get_cmd(
                     snmp_engine, auth_data, transport, ContextData(),
@@ -434,34 +589,61 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     except Exception:
                         pass
 
-            # 3b. RAM Memory via Host Resources Storage MIB
-            stor_descrs = await walk_oid_column(snmp_engine, auth_data, transport, OID_HR_STORAGE_DESCR, 20)
-            ram_idx = None
-            for idx, descr_val in stor_descrs.items():
-                d_str = str(descr_val).lower()
-                if any(k in d_str for k in ["main memory", "ram", "physical memory", "system memory"]):
-                    ram_idx = idx
-                    break
+            # 3b. RAM Memory: Juniper Buffer & DRAM MIB
+            if dev.device_type == "juniper" or dev.memory_usage is None:
+                jnx_bufs = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_BUFFER, 15)
+                if jnx_bufs:
+                    for b_idx, b_val in jnx_bufs.items():
+                        try:
+                            f_b = float(b_val)
+                            if 0.0 < f_b <= 100.0:
+                                dev.memory_usage = round(f_b, 1)
+                                break
+                        except Exception:
+                            pass
+                
+                jnx_drams = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_DRAM, 15)
+                if jnx_drams:
+                    for d_idx, d_val in jnx_drams.items():
+                        try:
+                            dram_bytes = float(d_val)
+                            if dram_bytes > (64 * 1024 * 1024):
+                                dev.memory_total_mb = round(dram_bytes / (1024 * 1024), 1)
+                                if dev.memory_usage is not None:
+                                    dev.memory_used_mb = round(dev.memory_total_mb * (dev.memory_usage / 100.0), 1)
+                                break
+                        except Exception:
+                            pass
 
-            if ram_idx is not None:
-                err_ind, err_stat, _, vbs = await get_cmd(
-                    snmp_engine, auth_data, transport, ContextData(),
-                    ObjectType(ObjectIdentity(f"{OID_HR_STORAGE_ALLOC_UNITS}.{ram_idx}")),
-                    ObjectType(ObjectIdentity(f"{OID_HR_STORAGE_SIZE}.{ram_idx}")),
-                    ObjectType(ObjectIdentity(f"{OID_HR_STORAGE_USED}.{ram_idx}"))
-                )
-                if not err_ind and not err_stat and len(vbs) == 3:
-                    units = float(vbs[0][1])
-                    total_units = float(vbs[1][1])
-                    used_units = float(vbs[2][1])
-                    if total_units > 0 and units > 0:
-                        total_bytes = total_units * units
-                        used_bytes = used_units * units
-                        dev.memory_total_mb = round(total_bytes / (1024 * 1024), 1)
-                        dev.memory_used_mb = round(used_bytes / (1024 * 1024), 1)
-                        dev.memory_usage = round((used_bytes / total_bytes) * 100, 1)
+            # Host Resources Storage MIB (RAM)
+            if dev.memory_usage is None:
+                stor_descrs = await walk_oid_column(snmp_engine, auth_data, transport, OID_HR_STORAGE_DESCR, 25)
+                ram_idx = None
+                for idx, descr_val in stor_descrs.items():
+                    d_str = str(descr_val).lower()
+                    if any(k in d_str for k in ["main memory", "ram", "physical memory", "system memory", "routing engine", "dram", "kernel memory", "system storage"]):
+                        ram_idx = idx
+                        break
 
-            # Fallback legacy MikroTik RAM scalar jika belum dapat
+                if ram_idx is not None:
+                    err_ind, err_stat, _, vbs = await get_cmd(
+                        snmp_engine, auth_data, transport, ContextData(),
+                        ObjectType(ObjectIdentity(f"{OID_HR_STORAGE_ALLOC_UNITS}.{ram_idx}")),
+                        ObjectType(ObjectIdentity(f"{OID_HR_STORAGE_SIZE}.{ram_idx}")),
+                        ObjectType(ObjectIdentity(f"{OID_HR_STORAGE_USED}.{ram_idx}"))
+                    )
+                    if not err_ind and not err_stat and len(vbs) == 3:
+                        units = float(vbs[0][1])
+                        total_units = float(vbs[1][1])
+                        used_units = float(vbs[2][1])
+                        if total_units > 0 and units > 0:
+                            total_bytes = total_units * units
+                            used_bytes = used_units * units
+                            dev.memory_total_mb = round(total_bytes / (1024 * 1024), 1)
+                            dev.memory_used_mb = round(used_bytes / (1024 * 1024), 1)
+                            dev.memory_usage = round((used_bytes / total_bytes) * 100, 1)
+
+            # Fallback legacy MikroTik RAM scalar
             if dev.memory_usage is None:
                 err_ind, err_stat, _, vbs = await get_cmd(
                     snmp_engine, auth_data, transport, ContextData(),
@@ -481,7 +663,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
             pass
 
         # -----------------------------------------------------------------
-        # LANGKAH 4: INTERFACES, TRAFFIC RATE & DETAIL SFP / OPTIK
+        # LANGKAH 4: INTERFACES, TRAFFIC RATE & DETAIL SFP / OPTIK (MIKROTIK & JUNIPER DOM)
         # -----------------------------------------------------------------
         try:
             # Ambil nama interface (ifName, fallback ifDescr)
@@ -516,7 +698,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                 rx_dict = if_rx_64 if has_hc else if_rx_32
                 tx_dict = if_tx_64 if (isinstance(if_tx_64, dict) and len(if_tx_64) > 0) else if_tx_32
 
-                # Ambil data tabel Optical SFP MikroTik (DDM)
+                # 4a. Ambil data tabel Optical SFP MikroTik (DDM)
                 optical_by_name = {}
                 try:
                     opt_names = await walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_NAME, 25)
@@ -549,7 +731,6 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
 
                         for o_idx, o_name_val in opt_names.items():
                             k_name = str(o_name_val).strip().lower()
-                            # Part number bisa di .14, atau fallback ke .13
                             part_num = str(opt_part.get(o_idx, "")).strip() or str(opt_rev.get(o_idx, "")).strip() or None
                             serial_num = str(opt_serial.get(o_idx, "")).strip() or None
 
@@ -565,6 +746,52 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                                 "serial": serial_num,
                                 "part": part_num,
                             }
+                except Exception:
+                    pass
+
+                # 4b. Ambil data Juniper Optical DOM (JUNIPER-DOM-MIB: jnxDomCurrentTable)
+                jnx_optical_by_idx = {}
+                try:
+                    jnx_rx_pwr = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_DOM_RX_PWR, 25)
+                    if jnx_rx_pwr:
+                        res_jnx_dom = await asyncio.gather(
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_DOM_TX_PWR, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_DOM_TEMP, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_DOM_VOLT, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_DOM_RX_LOS, 25),
+                            return_exceptions=True
+                        )
+                        jnx_tx_pwr = res_jnx_dom[0] if isinstance(res_jnx_dom[0], dict) else {}
+                        jnx_dom_temp = res_jnx_dom[1] if isinstance(res_jnx_dom[1], dict) else {}
+                        jnx_dom_volt = res_jnx_dom[2] if isinstance(res_jnx_dom[2], dict) else {}
+                        jnx_dom_los = res_jnx_dom[3] if isinstance(res_jnx_dom[3], dict) else {}
+
+                        for j_idx, raw_rx in jnx_rx_pwr.items():
+                            try:
+                                f_rx = float(raw_rx)
+                                is_loss = (f_rx <= -3500) or (int(jnx_dom_los.get(j_idx, 2)) == 1)
+                                parsed_rx = round(f_rx / 100.0, 2)
+                                
+                                raw_tx = jnx_tx_pwr.get(j_idx)
+                                parsed_tx = round(float(raw_tx) / 100.0, 2) if raw_tx is not None else None
+                                
+                                raw_t = jnx_dom_temp.get(j_idx)
+                                parsed_t = round(float(raw_t), 1) if raw_t is not None else None
+                                
+                                raw_v = jnx_dom_volt.get(j_idx)
+                                parsed_v = round(float(raw_v) / 1000.0, 2) if (raw_v is not None and float(raw_v) > 100) else (float(raw_v) if raw_v is not None else None)
+
+                                jnx_optical_by_idx[j_idx] = {
+                                    "rx_loss": is_loss,
+                                    "tx_fault": False,
+                                    "temperature": parsed_t,
+                                    "voltage": parsed_v,
+                                    "tx_power": parsed_tx,
+                                    "rx_power": parsed_rx,
+                                    "vendor": "Juniper / Optical",
+                                }
+                            except Exception:
+                                pass
                 except Exception:
                     pass
 
@@ -587,9 +814,18 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     # Deteksi port speed & SFP DDM
                     speed_mbps_val = int(speeds_dict.get(if_idx, 0)) if speeds_dict.get(if_idx) else None
                     port_speed_label = determine_port_speed(if_name, speed_mbps_val)
-                    is_sfp_port = ("sfp" in if_name.lower()) or (if_name.lower() in optical_by_name)
+                    
+                    is_sfp_port = (
+                        ("sfp" in if_name.lower()) or 
+                        if_name.lower().startswith("xe-") or 
+                        if_name.lower().startswith("et-") or 
+                        ("10g" in if_name.lower()) or
+                        (speed_mbps_val is not None and speed_mbps_val >= 10000) or
+                        (if_name.lower() in optical_by_name) or
+                        (if_idx in jnx_optical_by_idx)
+                    )
 
-                    opt_data = optical_by_name.get(if_name.lower(), {})
+                    opt_data = optical_by_name.get(if_name.lower()) or jnx_optical_by_idx.get(if_idx, {})
 
                     new_rx = int(rx_dict.get(if_idx, 0))
                     new_tx = int(tx_dict.get(if_idx, 0))
@@ -624,16 +860,16 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         # SFP & Optical telemetry
                         iface_obj.is_sfp = is_sfp_port
                         iface_obj.port_speed = port_speed_label
-                        iface_obj.sfp_vendor = opt_data.get("vendor")
-                        iface_obj.sfp_part_number = opt_data.get("part")
-                        iface_obj.sfp_serial = opt_data.get("serial")
-                        iface_obj.sfp_wavelength = opt_data.get("wavelength")
-                        iface_obj.sfp_temperature = opt_data.get("temperature")
-                        iface_obj.sfp_voltage = opt_data.get("voltage")
-                        iface_obj.sfp_tx_power = opt_data.get("tx_power")
-                        iface_obj.sfp_rx_power = opt_data.get("rx_power")
-                        iface_obj.sfp_rx_loss = opt_data.get("rx_loss", False)
-                        iface_obj.sfp_tx_fault = opt_data.get("tx_fault", False)
+                        iface_obj.sfp_vendor = opt_data.get("vendor") or iface_obj.sfp_vendor
+                        iface_obj.sfp_part_number = opt_data.get("part") or iface_obj.sfp_part_number
+                        iface_obj.sfp_serial = opt_data.get("serial") or iface_obj.sfp_serial
+                        iface_obj.sfp_wavelength = opt_data.get("wavelength") or iface_obj.sfp_wavelength
+                        iface_obj.sfp_temperature = opt_data.get("temperature") or iface_obj.sfp_temperature
+                        iface_obj.sfp_voltage = opt_data.get("voltage") or iface_obj.sfp_voltage
+                        iface_obj.sfp_tx_power = opt_data.get("tx_power") if opt_data.get("tx_power") is not None else iface_obj.sfp_tx_power
+                        iface_obj.sfp_rx_power = opt_data.get("rx_power") if opt_data.get("rx_power") is not None else iface_obj.sfp_rx_power
+                        iface_obj.sfp_rx_loss = opt_data.get("rx_loss", iface_obj.sfp_rx_loss)
+                        iface_obj.sfp_tx_fault = opt_data.get("tx_fault", iface_obj.sfp_tx_fault)
 
                     else:
                         new_iface = DeviceInterface(
@@ -666,7 +902,150 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         db.add(new_iface)
 
         except Exception as e:
-            # Jangan batalkan seluruh transaksi hanya jika pembacaan antarmuka mengalami kendala
+            pass
+
+        # -----------------------------------------------------------------
+        # LANGKAH 5: SENSOR PROTOKOL BGP (BORDER GATEWAY PROTOCOL - RFC 4273 / 1657)
+        # -----------------------------------------------------------------
+        try:
+            # Query Router-ID dan Local AS
+            err_ind, err_stat, _, bgp_basics = await get_cmd(
+                snmp_engine, auth_data, transport, ContextData(),
+                ObjectType(ObjectIdentity(OID_BGP_LOCAL_AS)),
+                ObjectType(ObjectIdentity(OID_BGP_IDENTIFIER))
+            )
+            if not err_ind and not err_stat and bgp_basics:
+                for vb in bgp_basics:
+                    o_str = str(vb[0])
+                    if o_str.startswith(OID_BGP_LOCAL_AS[:-2]):
+                        try:
+                            dev.bgp_local_as = int(vb[1])
+                        except Exception:
+                            pass
+                    elif o_str.startswith(OID_BGP_IDENTIFIER[:-2]):
+                        dev.bgp_router_id = str(vb[1]).strip()
+
+            # Query tabel BGP Peer State
+            peer_states = await walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_STATE, 50)
+            if peer_states:
+                res_bgp = await asyncio.gather(
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_REMOTE_AS, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_ADMIN_STATUS, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_IN_UPDATES, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_OUT_UPDATES, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_IN_MSGS, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_OUT_MSGS, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_EST_TIME, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_BGP_PREFIX_ACCEPTED, 50),
+                    return_exceptions=True
+                )
+                bgp_rem_as = res_bgp[0] if isinstance(res_bgp[0], dict) else {}
+                bgp_admin = res_bgp[1] if isinstance(res_bgp[1], dict) else {}
+                bgp_in_up = res_bgp[2] if isinstance(res_bgp[2], dict) else {}
+                bgp_out_up = res_bgp[3] if isinstance(res_bgp[3], dict) else {}
+                bgp_in_msg = res_bgp[4] if isinstance(res_bgp[4], dict) else {}
+                bgp_out_msg = res_bgp[5] if isinstance(res_bgp[5], dict) else {}
+                bgp_est_time = res_bgp[6] if isinstance(res_bgp[6], dict) else {}
+                bgp_prefixes = res_bgp[7] if isinstance(res_bgp[7], dict) else {}
+
+                BGP_STATE_MAP = {
+                    1: "idle",
+                    2: "connect",
+                    3: "active",
+                    4: "opensent",
+                    5: "openconfirm",
+                    6: "established"
+                }
+
+                existing_peers = {
+                    p.peer_ip: p
+                    for p in db.query(DeviceBgpPeer).filter(DeviceBgpPeer.device_id == dev.id).all()
+                }
+
+                active_peer_ips = set()
+                est_count = 0
+
+                for p_ip_raw, state_raw in peer_states.items():
+                    peer_ip = str(p_ip_raw).strip()
+                    active_peer_ips.add(peer_ip)
+                    
+                    st_num = int(state_raw) if state_raw is not None else 1
+                    st_str = BGP_STATE_MAP.get(st_num, "idle")
+                    if st_num == 6:
+                        est_count += 1
+
+                    r_as = int(bgp_rem_as.get(p_ip_raw, 0)) if bgp_rem_as.get(p_ip_raw) else None
+                    as_org = lookup_asn_name(r_as)
+
+                    admin_val = int(bgp_admin.get(p_ip_raw, 2)) if bgp_admin.get(p_ip_raw) else 2
+                    admin_str = "start" if admin_val == 2 else "stop"
+
+                    in_u = int(bgp_in_up.get(p_ip_raw, 0)) if bgp_in_up.get(p_ip_raw) else 0
+                    out_u = int(bgp_out_up.get(p_ip_raw, 0)) if bgp_out_up.get(p_ip_raw) else 0
+                    in_m = int(bgp_in_msg.get(p_ip_raw, 0)) if bgp_in_msg.get(p_ip_raw) else 0
+                    out_m = int(bgp_out_msg.get(p_ip_raw, 0)) if bgp_out_msg.get(p_ip_raw) else 0
+                    est_sec = int(bgp_est_time.get(p_ip_raw, 0)) if bgp_est_time.get(p_ip_raw) else 0
+                    uptime_str = format_uptime(est_sec * 100) if est_sec > 0 else "-"
+
+                    # Prefix count matching: di Juniper OID suffix berformat [peer_idx].1.1
+                    pref_count = None
+                    if p_ip_raw in bgp_prefixes:
+                        try:
+                            pref_count = int(bgp_prefixes[p_ip_raw])
+                        except Exception:
+                            pass
+                    else:
+                        for k_pref, v_pref in bgp_prefixes.items():
+                            if str(p_ip_raw) in str(k_pref):
+                                try:
+                                    pref_count = int(v_pref)
+                                    break
+                                except Exception:
+                                    pass
+
+                    now_p_dt = now_wib()
+                    if peer_ip in existing_peers:
+                        p_obj = existing_peers[peer_ip]
+                        p_obj.remote_as = r_as
+                        p_obj.as_name = as_org
+                        p_obj.state = st_str
+                        p_obj.admin_status = admin_str
+                        p_obj.in_updates = in_u
+                        p_obj.out_updates = out_u
+                        p_obj.in_total_messages = in_m
+                        p_obj.out_total_messages = out_m
+                        p_obj.fsm_established_time = est_sec
+                        p_obj.uptime = uptime_str
+                        if pref_count is not None:
+                            p_obj.accepted_prefixes = pref_count
+                        p_obj.last_updated = now_p_dt
+                    else:
+                        p_obj = DeviceBgpPeer(
+                            device_id=dev.id,
+                            peer_ip=peer_ip,
+                            remote_as=r_as,
+                            as_name=as_org,
+                            state=st_str,
+                            admin_status=admin_str,
+                            in_updates=in_u,
+                            out_updates=out_u,
+                            in_total_messages=in_m,
+                            out_total_messages=out_m,
+                            fsm_established_time=est_sec,
+                            uptime=uptime_str,
+                            accepted_prefixes=pref_count,
+                            last_updated=now_p_dt
+                        )
+                        db.add(p_obj)
+
+                # Hapus peer yang sudah tidak ada
+                for old_ip, old_obj in existing_peers.items():
+                    if old_ip not in active_peer_ips:
+                        db.delete(old_obj)
+
+                dev.bgp_peer_count = len(active_peer_ips)
+                dev.bgp_established_count = est_count
+        except Exception:
             pass
 
         # Rekam snapshot traffic ke tabel histori (NetworkTrafficHistory)

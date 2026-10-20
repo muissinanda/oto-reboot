@@ -520,6 +520,10 @@
                                 <div class="p-2 rounded-2 flex-shrink-0" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1;">
                                     {% if d.device_type == 'mikrotik' %}
                                         <i class="bi bi-hdd-network text-info fs-3"></i>
+                                    {% elif d.device_type == 'juniper' %}
+                                        <i class="bi bi-diagram-3-fill text-cyan fs-3" title="Juniper Junos Router"></i>
+                                    {% elif d.device_type == 'cisco' %}
+                                        <i class="bi bi-hdd-rack text-primary fs-3" title="Cisco Router"></i>
                                     {% elif d.device_type == 'access_point' %}
                                         <i class="bi bi-router text-warning fs-3"></i>
                                     {% else %}
@@ -532,9 +536,14 @@
                                 </div>
                             </div>
 
-                            <!-- IP & SNMP Bar -->
-                            <div class="d-flex justify-content-between align-items-center py-1.5 px-2.5 rounded-2 mb-3 font-mono" style="background: rgba(0, 0, 0, 0.25); font-size: 0.78rem;">
+                            <!-- IP & SNMP Bar (with BGP Telemetry if configured) -->
+                            <div class="d-flex justify-content-between align-items-center py-1.5 px-2.5 rounded-2 mb-3 font-mono flex-wrap gap-1" style="background: rgba(0, 0, 0, 0.25); font-size: 0.78rem;">
                                 <span class="text-light fw-medium"><i class="bi bi-hdd me-1 text-secondary"></i>{{ d.ip }}</span>
+                                {% if d.bgp_peer_count and d.bgp_peer_count > 0 %}
+                                    <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.45); font-size: 0.7rem;">
+                                        <i class="bi bi-diagram-2 me-1"></i>BGP: {{ d.bgp_established_count }}/{{ d.bgp_peer_count }} UP
+                                    </span>
+                                {% endif %}
                                 <span class="text-secondary small">SNMP v{{ d.snmp_version }} (Port {{ d.snmp_port }})</span>
                             </div>
 

@@ -96,7 +96,36 @@ class NetworkDevice(Base):
     last_polled = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_wib)
 
+    # BGP Telemetry Summary
+    bgp_peer_count = Column(Integer, default=0)
+    bgp_established_count = Column(Integer, default=0)
+    bgp_local_as = Column(Integer, nullable=True)
+    bgp_router_id = Column(String(50), nullable=True)
+
     interfaces = relationship("DeviceInterface", back_populates="device", cascade="all, delete-orphan", lazy="joined")
+    bgp_peers = relationship("DeviceBgpPeer", back_populates="device", cascade="all, delete-orphan", lazy="joined")
+
+class DeviceBgpPeer(Base):
+    __tablename__ = "device_bgp_peers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("network_devices.id", ondelete="CASCADE"), index=True, nullable=False)
+    peer_ip = Column(String(50), nullable=False)           # Peer Remote IP (e.g. 103.241.204.1)
+    remote_as = Column(Integer, nullable=True)            # Remote AS (e.g. 13335, 7713)
+    as_name = Column(String(100), nullable=True)          # Nama Provider / Organisasi AS
+    state = Column(String(50), default="idle")             # established, active, idle, connect, etc.
+    admin_status = Column(String(50), default="start")     # start, stop
+    in_updates = Column(BigInteger, default=0)
+    out_updates = Column(BigInteger, default=0)
+    in_total_messages = Column(BigInteger, default=0)
+    out_total_messages = Column(BigInteger, default=0)
+    fsm_established_time = Column(Integer, default=0)      # Detik session berjalan
+    uptime = Column(String(50), nullable=True)             # Human-readable uptime
+    accepted_prefixes = Column(Integer, nullable=True)     # Jumlah route / prefix diterima
+    description = Column(String(255), nullable=True)
+    last_updated = Column(DateTime, nullable=True)
+
+    device = relationship("NetworkDevice", back_populates="bgp_peers")
 
 class DeviceInterface(Base):
     __tablename__ = "device_interfaces"
@@ -238,6 +267,23 @@ def init_db():
                 if col_name not in iface_cols:
                     try:
                         conn.execute(text(f"ALTER TABLE device_interfaces ADD COLUMN {col_name} {col_type}"))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+            # Migrasi tabel network_devices untuk kolom BGP
+            res_dev = conn.execute(text("PRAGMA table_info(network_devices)")).fetchall()
+            dev_cols = [row[1] for row in res_dev]
+            bgp_dev_cols = [
+                ("bgp_peer_count", "INTEGER DEFAULT 0"),
+                ("bgp_established_count", "INTEGER DEFAULT 0"),
+                ("bgp_local_as", "INTEGER"),
+                ("bgp_router_id", "VARCHAR(50)"),
+            ]
+            for col_name, col_type in bgp_dev_cols:
+                if col_name not in dev_cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE network_devices ADD COLUMN {col_name} {col_type}"))
                         conn.commit()
                     except Exception:
                         pass

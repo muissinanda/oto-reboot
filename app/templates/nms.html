@@ -198,7 +198,11 @@
                             <div class="d-flex align-items-center gap-2">
                                 <div class="p-1.5 rounded flex-shrink-0" style="background: rgba(255, 255, 255, 0.04); color: #cbd5e1; font-size: 1rem;">
                                     {% if d.device_type == 'mikrotik' %}
-                                        <i class="bi bi-hdd-network text-info"></i>
+                                        <i class="bi bi-hdd-network text-info" title="MikroTik RouterOS"></i>
+                                    {% elif d.device_type == 'juniper' %}
+                                        <i class="bi bi-diagram-3-fill text-cyan" title="Juniper Junos Router"></i>
+                                    {% elif d.device_type == 'cisco' %}
+                                        <i class="bi bi-hdd-rack text-primary" title="Cisco Router"></i>
                                     {% elif d.device_type == 'access_point' %}
                                         <i class="bi bi-router text-warning"></i>
                                     {% else %}
@@ -208,6 +212,14 @@
                                 <div class="overflow-hidden">
                                     <div class="fw-bold text-light text-truncate" style="font-size: 0.85rem;" title="{{ d.name }}">{{ d.name }}</div>
                                     <div class="text-secondary font-mono text-truncate" style="font-size: 0.68rem;" title="{{ d.model_info }}">{{ d.model_info or '-' }}</div>
+                                    {% if d.bgp_peer_count and d.bgp_peer_count > 0 %}
+                                        <div class="mt-0.5">
+                                            <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.45); font-size: 0.65rem; padding: 2px 6px; cursor: pointer;" onclick="openBgpModalById({{ d.id }})" title="Klik untuk lihat sesi BGP">
+                                                <i class="bi bi-diagram-2 me-1"></i>BGP: {{ d.bgp_established_count }}/{{ d.bgp_peer_count }} UP
+                                                {% if d.bgp_local_as %}(AS{{ d.bgp_local_as }}){% endif %}
+                                            </span>
+                                        </div>
+                                    {% endif %}
                                 </div>
                             </div>
                         </td>
@@ -301,6 +313,11 @@
                         </td>
                         <td class="text-end pe-3" style="white-space: nowrap;">
                             <div class="d-inline-flex align-items-center gap-1">
+                                {% if d.bgp_peer_count and d.bgp_peer_count > 0 %}
+                                    <button class="btn btn-sm py-1 px-2 font-mono" title="Detail Sesi BGP Peer" onclick="openBgpModalById({{ d.id }})" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.45); font-size: 0.75rem;">
+                                        <i class="bi bi-diagram-2 me-1"></i>BGP
+                                    </button>
+                                {% endif %}
                                 <button class="btn btn-sm btn-modern-primary py-1 px-2" title="Detail Traffic & Interface" onclick="openInterfacesModalById({{ d.id }})" style="font-size: 0.75rem;">
                                     <i class="bi bi-bar-chart-line me-1"></i>Traffic
                                 </button>
@@ -369,6 +386,9 @@
                             </button>
                             <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn" data-type="wireless" onclick="filterIfaceType('wireless', this)">
                                 <i class="bi bi-wifi me-1 text-cyan"></i> Wireless
+                            </button>
+                            <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn d-none" id="btnIfaceTabBgp" onclick="openBgpModalById(currentActiveDeviceId)" title="Lihat detail sesi BGP">
+                                <i class="bi bi-diagram-2 me-1 text-warning"></i> Sesi BGP (<span id="countIfaceBgp" class="font-mono">0</span>)
                             </button>
                         </div>
 
@@ -445,6 +465,94 @@
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-modern-outline" id="btnRefreshModalIface" onclick="refreshCurrentInterfaces()">
                         <i class="bi bi-arrow-clockwise"></i> Refresh Data
+                    </button>
+                    <button type="button" class="btn btn-modern-primary" data-bs-dismiss="modal">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: DETAIL BGP PEERS & SESSIONS (RFC 4273 / JUNIPER BGP) -->
+<div class="modal fade" id="bgpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" style="background: #090d16; border: 1px solid rgba(99, 102, 241, 0.35); box-shadow: 0 0 35px rgba(99, 102, 241, 0.25);">
+            <div class="modal-header d-flex justify-content-between align-items-center border-bottom border-light border-opacity-10 py-3">
+                <div>
+                    <h5 class="modal-title fw-bold text-light d-flex align-items-center gap-2 mb-0">
+                        <i class="bi bi-diagram-2-fill text-info fs-4"></i> 
+                        <span>Monitoring BGP Routing: <span id="bgpModalDeviceName" class="text-cyan"></span></span>
+                    </h5>
+                    <div id="bgpModalSummary" class="text-secondary small font-mono mt-1">Memuat telemetri BGP...</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-4">
+                <!-- 4 HERO CARDS UNTUK BGP -->
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 rounded-3 h-100" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div class="text-secondary small font-mono">LOCAL BGP ASN</div>
+                            <div class="fs-4 fw-extrabold font-mono text-light mt-1" id="bgpCardLocalAs">-</div>
+                            <div class="text-secondary small font-mono mt-0.5" id="bgpCardRouterId">Router ID: -</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 rounded-3 h-100" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25);">
+                            <div class="text-success small font-mono">SESI ESTABLISHED (UP)</div>
+                            <div class="fs-4 fw-extrabold font-mono text-success mt-1" id="bgpCardEstablished">0</div>
+                            <div class="text-secondary small font-mono mt-0.5">Sesi Berjalan Aktif</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 rounded-3 h-100" id="bgpCardDownBox" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div class="text-secondary small font-mono">SESI DOWN / IDLE</div>
+                            <div class="fs-4 fw-extrabold font-mono text-secondary mt-1" id="bgpCardDown">0</div>
+                            <div class="text-secondary small font-mono mt-0.5" id="bgpCardDownSub">Tidak Ada Gangguan</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 rounded-3 h-100" style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.25);">
+                            <div class="text-info small font-mono">TOTAL PEER TERDAFTAR</div>
+                            <div class="fs-4 fw-extrabold font-mono text-info mt-1" id="bgpCardTotalPeers">0</div>
+                            <div class="text-secondary small font-mono mt-0.5" id="bgpCardPrefixes">Prefix: Telemetri Aktif</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BGP PEERS TABLE -->
+                <div class="table-responsive rounded-3 border border-light border-opacity-10" style="max-height: 480px;">
+                    <table class="table align-middle mb-0" id="bgpPeersTable">
+                        <thead class="sticky-top" style="background: #0f172a; z-index: 10;">
+                            <tr>
+                                <th width="115">Status</th>
+                                <th>Peer IP Address</th>
+                                <th>Remote ASN & Provider</th>
+                                <th class="text-end">Accepted Prefix</th>
+                                <th class="text-end">Updates (In / Out)</th>
+                                <th class="text-end">Total Messages</th>
+                                <th class="text-end">Session Uptime</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bgpPeersTableBody">
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-secondary">
+                                    <div class="spinner-border spinner-border-sm text-info me-2"></div> Memuat sesi BGP...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-footer d-flex justify-content-between flex-wrap gap-2 border-top border-light border-opacity-10">
+                <div class="text-secondary small font-mono">
+                    <i class="bi bi-shield-check text-success me-1"></i>SNMP BGP4-MIB Telemetri Aktif
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-modern-outline" id="btnRefreshBgpModal" onclick="refreshCurrentBgp()">
+                        <i class="bi bi-arrow-clockwise"></i> Poll Ulang BGP
                     </button>
                     <button type="button" class="btn btn-modern-primary" data-bs-dismiss="modal">Tutup</button>
                 </div>
@@ -1171,11 +1279,159 @@ async function loadDeviceInterfaces(deviceId) {
 
             document.getElementById('modalDeviceSummary').innerHTML = summaryParts.join(' • ');
             
+            // Check if device has BGP Peers
+            const bgpBtn = document.getElementById('btnIfaceTabBgp');
+            if (data.device.bgp_peer_count && data.device.bgp_peer_count > 0) {
+                summaryParts.push(`BGP: <b class="text-indigo" style="cursor: pointer;" onclick="openBgpModalById(${deviceId})">${data.device.bgp_established_count}/${data.device.bgp_peer_count} UP</b>`);
+                document.getElementById('modalDeviceSummary').innerHTML = summaryParts.join(' • ');
+                if (bgpBtn) {
+                    bgpBtn.classList.remove('d-none');
+                    document.getElementById('countIfaceBgp').innerText = data.device.bgp_peer_count;
+                }
+            } else {
+                if (bgpBtn) bgpBtn.classList.add('d-none');
+            }
+
             // Update counter badges
             updateIfaceTypeBadges(currentInterfacesData);
 
             // Default sort: highest download rate (Rx)
             sortInterfaces('rx', true);
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger"><i class="bi bi-exclamation-circle me-1"></i> ${data.message}</td></tr>`;
+        }
+    } catch (err) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger"><i class="bi bi-x-circle me-1"></i> ${err.message}</td></tr>`;
+    }
+}
+
+// ==========================================
+// BGP PEERS & SESSIONS MODAL LOGIC
+// ==========================================
+let currentBgpDeviceId = null;
+
+async function openBgpModalById(deviceId) {
+    currentBgpDeviceId = deviceId;
+    const d = allDevices.find(x => x.id === deviceId);
+    const name = d ? d.name : "Perangkat";
+    document.getElementById('bgpModalDeviceName').innerText = name;
+    document.getElementById('bgpModalSummary').innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Mengambil data BGP...`;
+
+    const bgpModal = new bootstrap.Modal(document.getElementById('bgpModal'));
+    bgpModal.show();
+
+    await loadDeviceBgp(deviceId);
+}
+
+async function refreshCurrentBgp() {
+    if (!currentBgpDeviceId) return;
+    const btn = document.getElementById('btnRefreshBgpModal');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Memperbarui...`;
+
+    await fetch(`/api/nms/devices/${currentBgpDeviceId}/poll`, { method: 'POST' });
+    await loadDeviceBgp(currentBgpDeviceId);
+
+    btn.disabled = false;
+    btn.innerHTML = `<i class="bi bi-arrow-clockwise"></i> Poll Ulang BGP`;
+}
+
+async function loadDeviceBgp(deviceId) {
+    const tableBody = document.getElementById('bgpPeersTableBody');
+    tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary"><div class="spinner-border spinner-border-sm text-info me-2"></div> Memuat data BGP peer...</td></tr>`;
+
+    try {
+        const res = await fetch(`/api/nms/devices/${deviceId}/bgp`);
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+            const dev = data.device;
+            const peers = data.bgp_peers || [];
+
+            document.getElementById('bgpCardLocalAs').innerText = dev.bgp_local_as ? `AS${dev.bgp_local_as}` : '-';
+            document.getElementById('bgpCardRouterId').innerText = dev.bgp_router_id ? `Router ID: ${dev.bgp_router_id}` : 'Router ID: -';
+
+            const establishedCount = peers.filter(p => p.is_established).length;
+            const downCount = peers.length - establishedCount;
+
+            document.getElementById('bgpCardEstablished').innerText = establishedCount;
+            document.getElementById('bgpCardTotalPeers').innerText = peers.length;
+
+            const downBox = document.getElementById('bgpCardDownBox');
+            const downVal = document.getElementById('bgpCardDown');
+            const downSub = document.getElementById('bgpCardDownSub');
+            downVal.innerText = downCount;
+            if (downCount > 0) {
+                downBox.style.background = 'rgba(239, 68, 68, 0.15)';
+                downBox.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                downVal.className = 'fs-4 fw-extrabold font-mono text-danger mt-1';
+                downSub.innerHTML = `<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>${downCount} Sesi Terputus!</span>`;
+            } else {
+                downBox.style.background = 'rgba(255, 255, 255, 0.03)';
+                downBox.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                downVal.className = 'fs-4 fw-extrabold font-mono text-secondary mt-1';
+                downSub.innerText = 'Semua Sesi Normal';
+            }
+
+            const totalPrefixes = peers.reduce((acc, p) => acc + (p.accepted_prefixes || 0), 0);
+            if (totalPrefixes > 0) {
+                document.getElementById('bgpCardPrefixes').innerText = `Total Prefix: ${totalPrefixes.toLocaleString('id-ID')} Route`;
+            } else {
+                document.getElementById('bgpCardPrefixes').innerText = 'Prefix: Telemetri Aktif';
+            }
+
+            document.getElementById('bgpModalSummary').innerHTML = `IP: <b class="text-light">${dev.ip}</b> • Local: <b class="text-cyan">${dev.bgp_local_as ? 'AS' + dev.bgp_local_as : '-'}</b> • Status: <b class="${downCount > 0 ? 'text-warning' : 'text-success'}">${establishedCount}/${peers.length} Established</b>`;
+
+            if (peers.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-secondary"><i class="bi bi-diagram-2 fs-2 d-block mb-2 opacity-50"></i>Belum ada peer BGP yang terbaca via SNMP BGP4-MIB.<div class="small mt-1">Pastikan router menjalankan BGP dan community SNMP mengizinkan pembacaan BGP OID.</div></td></tr>`;
+                return;
+            }
+
+            let html = '';
+            peers.forEach(p => {
+                let badge = '';
+                if (p.is_established) {
+                    badge = `<span class="badge font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; padding: 4px 8px;">● Established</span>`;
+                } else if (p.state === 'active' || p.state === 'connect') {
+                    badge = `<span class="badge font-mono" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.72rem; padding: 4px 8px;">● ${p.state.toUpperCase()}</span>`;
+                } else {
+                    badge = `<span class="badge font-mono" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.72rem; padding: 4px 8px;">● ${p.state.toUpperCase()}</span>`;
+                }
+
+                const prefixStr = p.accepted_prefixes !== null && p.accepted_prefixes !== undefined ? 
+                    `<b class="text-cyan font-mono">${p.accepted_prefixes.toLocaleString('id-ID')}</b>` : 
+                    `<span class="text-secondary font-mono">-</span>`;
+
+                html += `
+                    <tr>
+                        <td>${badge}</td>
+                        <td>
+                            <div class="fw-bold font-mono text-light" style="font-size: 0.85rem;">${p.peer_ip}</div>
+                            <div class="text-secondary small font-mono" style="font-size: 0.68rem;">Admin: ${p.admin_status}</div>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-1.5">
+                                <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); font-size: 0.72rem;">
+                                    AS${p.remote_as || '-'}
+                                </span>
+                                <span class="fw-semibold text-light small">${p.as_name || 'BGP Peer'}</span>
+                            </div>
+                            ${p.description ? `<div class="text-secondary small mt-0.5" style="font-size: 0.68rem;">${p.description}</div>` : ''}
+                        </td>
+                        <td class="text-end">${prefixStr}</td>
+                        <td class="text-end font-mono small">
+                            <span class="text-cyan">↓ ${p.in_updates.toLocaleString('id-ID')}</span>
+                            <span class="text-secondary mx-0.5">/</span>
+                            <span style="color: #c084fc;">↑ ${p.out_updates.toLocaleString('id-ID')}</span>
+                        </td>
+                        <td class="text-end font-mono small text-secondary">
+                            ${p.in_total_messages.toLocaleString('id-ID')} / ${p.out_total_messages.toLocaleString('id-ID')}
+                        </td>
+                        <td class="text-end font-mono small text-light">${p.uptime}</td>
+                    </tr>
+                `;
+            });
+            tableBody.innerHTML = html;
         } else {
             tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger"><i class="bi bi-exclamation-circle me-1"></i> ${data.message}</td></tr>`;
         }
