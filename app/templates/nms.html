@@ -467,7 +467,7 @@
 
 <!-- MODAL: DETAIL PORT SFP & FIBER OPTIK (DDM) -->
 <div class="modal fade" id="sfpDetailModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 860px;">
         <div class="modal-content">
             <div class="modal-header d-flex justify-content-between align-items-center">
                 <div>
@@ -485,91 +485,140 @@
                 <div class="row g-3 mb-4">
                     <!-- Redaman (RX Power) -->
                     <div class="col-6 col-md-3">
-                        <div class="glass-card p-3 h-100">
-                            <div class="text-secondary small fw-medium">Redaman Optik (Rx)</div>
-                            <div class="fs-4 fw-bold mt-1 font-mono" id="sfpRxPowerVal">-</div>
-                            <div id="sfpRxPowerPill" class="mt-1"></div>
+                        <div class="glass-card p-3 h-100 d-flex flex-column justify-content-between" style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div>
+                                <div class="text-secondary small fw-medium">Redaman Optik (Rx)</div>
+                                <div class="d-flex align-items-baseline gap-1 mt-1 font-mono" style="white-space: nowrap;">
+                                    <span class="fs-4 fw-bold" id="sfpRxPowerVal">-</span>
+                                    <span class="text-secondary small font-mono" id="sfpRxPowerUnit" style="font-size: 0.75rem;">dBm</span>
+                                </div>
+                            </div>
+                            <div id="sfpRxPowerPill" class="mt-2"></div>
                         </div>
                     </div>
                     <!-- Suhu SFP -->
                     <div class="col-6 col-md-3">
-                        <div class="glass-card p-3 h-100">
-                            <div class="text-secondary small fw-medium">Suhu SFP</div>
-                            <div class="fs-4 fw-bold mt-1 font-mono" id="sfpTempVal">-</div>
-                            <div id="sfpTempStatus" class="mt-1 small"></div>
+                        <div class="glass-card p-3 h-100 d-flex flex-column justify-content-between" style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div>
+                                <div class="text-secondary small fw-medium">Suhu SFP</div>
+                                <div class="d-flex align-items-baseline gap-1 mt-1 font-mono" style="white-space: nowrap;">
+                                    <span class="fs-4 fw-bold" id="sfpTempVal">-</span>
+                                    <span class="text-secondary small font-mono" style="font-size: 0.75rem;">°C</span>
+                                </div>
+                            </div>
+                            <div id="sfpTempStatus" class="mt-2"></div>
                         </div>
                     </div>
                     <!-- TX Power -->
                     <div class="col-6 col-md-3">
-                        <div class="glass-card p-3 h-100">
-                            <div class="text-secondary small fw-medium">Laser TX Power</div>
-                            <div class="fs-4 fw-bold mt-1 font-mono text-cyan" id="sfpTxPowerVal">-</div>
-                            <div class="text-secondary small mt-1">Daya Pancar</div>
+                        <div class="glass-card p-3 h-100 d-flex flex-column justify-content-between" style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div>
+                                <div class="text-secondary small fw-medium">Laser TX Power</div>
+                                <div class="d-flex align-items-baseline gap-1 mt-1 font-mono" style="white-space: nowrap;">
+                                    <span class="fs-4 fw-bold text-cyan" id="sfpTxPowerVal">-</span>
+                                    <span class="text-secondary small font-mono" id="sfpTxPowerUnit" style="font-size: 0.75rem;">dBm</span>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <span class="badge" style="background: rgba(6, 182, 212, 0.12); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.25); font-size: 0.72rem;">
+                                    <i class="bi bi-broadcast me-1"></i>Daya Pancar
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <!-- Tipe & Speed -->
                     <div class="col-6 col-md-3">
-                        <div class="glass-card p-3 h-100">
-                            <div class="text-secondary small fw-medium">Spesifikasi Port</div>
-                            <div class="fs-5 fw-bold mt-1 font-mono text-info" id="sfpSpeedVal">-</div>
-                            <div class="text-secondary small mt-1" id="sfpWaveVal">-</div>
+                        <div class="glass-card p-3 h-100 d-flex flex-column justify-content-between" style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div>
+                                <div class="text-secondary small fw-medium">Spesifikasi Port</div>
+                                <div class="fs-4 fw-bold mt-1 font-mono text-info text-truncate" id="sfpSpeedVal">-</div>
+                            </div>
+                            <div class="mt-2">
+                                <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.25); font-size: 0.72rem;" id="sfpWaveVal">
+                                    <i class="bi bi-lightbulb me-1"></i>Standar Optik
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- TRANSCEIVER HARDWARE DETAIL TABLE -->
-                <div class="glass-card p-3">
+                <div class="glass-card p-3 mb-3" style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08);">
                     <div class="fw-bold text-light mb-3 d-flex align-items-center gap-2">
                         <i class="bi bi-cpu text-primary"></i>
                         <span>Informasi Modul Transceiver SFP</span>
                     </div>
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
+                        <table class="table align-middle mb-0" style="border-collapse: separate; border-spacing: 0 4px;">
                             <tbody>
-                                <tr>
-                                    <td class="text-secondary small" width="200">Merk / Vendor SFP</td>
-                                    <td class="font-mono fw-bold text-light" id="sfpVendorVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start" width="240">Merk / Vendor SFP</td>
+                                    <td class="font-mono fw-bold text-light py-2 px-3 rounded-end" id="sfpVendorVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Model / Part Number</td>
-                                    <td class="font-mono text-light" id="sfpPartVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Model / Part Number</td>
+                                    <td class="font-mono text-light py-2 px-3 rounded-end" id="sfpPartVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Serial Number</td>
-                                    <td class="font-mono text-secondary" id="sfpSerialVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Serial Number</td>
+                                    <td class="font-mono text-secondary py-2 px-3 rounded-end" id="sfpSerialVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Panjang Gelombang (Wavelength)</td>
-                                    <td class="font-mono text-info" id="sfpWaveDetailVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Panjang Gelombang (Wavelength)</td>
+                                    <td class="font-mono text-info fw-semibold py-2 px-3 rounded-end" id="sfpWaveDetailVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Tegangan Operasional (Voltage)</td>
-                                    <td class="font-mono text-warning" id="sfpVoltVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Tegangan Operasional (Voltage)</td>
+                                    <td class="font-mono text-warning fw-semibold py-2 px-3 rounded-end" id="sfpVoltVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Status RX Loss Alarm</td>
-                                    <td id="sfpLossVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Status RX Loss Alarm</td>
+                                    <td class="py-2 px-3 rounded-end" id="sfpLossVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Status TX Fault Alarm</td>
-                                    <td id="sfpFaultVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Status TX Fault Alarm</td>
+                                    <td class="py-2 px-3 rounded-end" id="sfpFaultVal">-</td>
                                 </tr>
-                                <tr>
-                                    <td class="text-secondary small">Komentar Port (Winbox)</td>
-                                    <td class="text-light" id="sfpAliasVal">-</td>
+                                <tr style="background: rgba(255, 255, 255, 0.02);">
+                                    <td class="text-secondary small py-2 px-3 rounded-start">Komentar Port (Winbox)</td>
+                                    <td class="text-light fw-medium py-2 px-3 rounded-end" id="sfpAliasVal">-</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <div class="mt-3 p-3 rounded-3" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.1);">
-                    <div class="text-secondary small">
-                        <b class="text-light"><i class="bi bi-info-circle me-1"></i> Panduan Indikator Redaman (RX Power):</b><br>
-                        • <span class="text-success fw-bold">&ge; -18.0 dBm</span> : Sinyal Sangat Baik<br>
-                        • <span class="text-info fw-bold">-18.0 s/d -23.0 dBm</span> : Sinyal Normal (Standar Operasional)<br>
-                        • <span class="text-warning fw-bold">-23.0 s/d -27.0 dBm</span> : Waspada (Redaman Tinggi / Cek Patchcord & Kebersihan Core)<br>
-                        • <span class="text-danger fw-bold">&lt; -27.0 dBm atau LOS</span> : Sinyal Kritis / Core Fiber Optik Terputus
+                <!-- PANDUAN STANDAR REDAMAN FIBER OPTIK -->
+                <div class="p-3 rounded-3" style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div class="text-secondary small mb-2.5 d-flex align-items-center gap-1.5">
+                        <i class="bi bi-info-circle-fill text-info"></i>
+                        <span class="text-light fw-bold">Panduan Standar Redaman Fiber Optik (RX Power):</span>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-2 h-100" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2);">
+                                <div class="text-success fw-bold font-mono" style="font-size: 0.85rem;">&ge; -18.0 dBm</div>
+                                <div class="text-light opacity-75 small mt-0.5" style="font-size: 0.72rem;">Sangat Bagus (Optimal)</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-2 h-100" style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2);">
+                                <div class="text-info fw-bold font-mono" style="font-size: 0.85rem;">-18.0 s/d -23.0 dBm</div>
+                                <div class="text-light opacity-75 small mt-0.5" style="font-size: 0.72rem;">Normal (Standar Telko)</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-2 h-100" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2);">
+                                <div class="text-warning fw-bold font-mono" style="font-size: 0.85rem;">-23.0 s/d -27.0 dBm</div>
+                                <div class="text-light opacity-75 small mt-0.5" style="font-size: 0.72rem;">Waspada (Cek Patch/Core)</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="p-2.5 rounded-2 h-100" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2);">
+                                <div class="text-danger fw-bold font-mono" style="font-size: 0.85rem;">&lt; -27.0 / LOS</div>
+                                <div class="text-light opacity-75 small mt-0.5" style="font-size: 0.72rem;">Kritis / Fiber Putus</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -577,9 +626,6 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-modern-primary" data-bs-dismiss="modal">Tutup</button>
             </div>
-        </div>
-    </div>
-</div>
         </div>
     </div>
 </div>
@@ -1442,62 +1488,74 @@ function openSfpModal(ifaceId) {
     // Spesifikasi Port & Kecepatan (1G, 10G, 25G)
     const speedLabel = iface.port_speed || (iface.name.toLowerCase().includes('sfp28') ? '25G SFP28' : (iface.name.toLowerCase().includes('sfpplus') ? '10G SFP+' : '1G SFP'));
     document.getElementById('sfpSpeedVal').innerText = speedLabel;
-    document.getElementById('sfpWaveVal').innerText = iface.sfp_wavelength ? `Panjang Gelombang: ${iface.sfp_wavelength} nm` : 'Wavelength: Standar Optik';
+    
+    const waveEl = document.getElementById('sfpWaveVal');
+    if (waveEl) {
+        waveEl.innerHTML = iface.sfp_wavelength ? `<i class="bi bi-lightbulb me-1"></i>${iface.sfp_wavelength} nm` : '<i class="bi bi-lightbulb me-1"></i>Standar Optik';
+    }
 
     // RX Power / Redaman Fiber Optik
     const rxBox = document.getElementById('sfpRxPowerVal');
+    const rxUnit = document.getElementById('sfpRxPowerUnit');
     const rxPill = document.getElementById('sfpRxPowerPill');
+    
     if (iface.sfp_rx_power !== null && iface.sfp_rx_power !== undefined) {
-        rxBox.innerText = `${iface.sfp_rx_power.toFixed(3)} dBm`;
+        rxBox.innerText = iface.sfp_rx_power.toFixed(3);
+        if (rxUnit) rxUnit.style.display = 'inline';
+        
         if (iface.sfp_rx_loss) {
-            rxBox.className = "fs-4 fw-bold mt-1 font-mono text-danger";
-            rxPill.innerHTML = `<span class="badge bg-danger bg-opacity-25 text-danger"><i class="bi bi-x-circle me-1"></i>Loss of Signal (Kabel Fiber Putus)</span>`;
+            rxBox.className = "fs-4 fw-bold font-mono text-danger";
+            rxPill.innerHTML = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.72rem; white-space: nowrap;"><i class="bi bi-x-circle me-1"></i>Loss of Signal (Putus)</span>`;
         } else if (iface.sfp_rx_power >= -18.0) {
-            rxBox.className = "fs-4 fw-bold mt-1 font-mono text-success";
-            rxPill.innerHTML = `<span class="badge bg-success bg-opacity-25 text-success"><i class="bi bi-check-circle me-1"></i>Sinyal Sangat Baik (Bagus)</span>`;
+            rxBox.className = "fs-4 fw-bold font-mono text-success";
+            rxPill.innerHTML = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem; white-space: nowrap;"><i class="bi bi-check-circle-fill me-1"></i>Sangat Bagus</span>`;
         } else if (iface.sfp_rx_power >= -23.0) {
-            rxBox.className = "fs-4 fw-bold mt-1 font-mono text-info";
-            rxPill.innerHTML = `<span class="badge bg-info bg-opacity-25 text-info"><i class="bi bi-info-circle me-1"></i>Sinyal Normal (Standar)</span>`;
+            rxBox.className = "fs-4 fw-bold font-mono text-info";
+            rxPill.innerHTML = `<span class="badge" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); font-size: 0.72rem; white-space: nowrap;"><i class="bi bi-info-circle-fill me-1"></i>Sinyal Normal</span>`;
         } else if (iface.sfp_rx_power >= -27.0) {
-            rxBox.className = "fs-4 fw-bold mt-1 font-mono text-warning";
-            rxPill.innerHTML = `<span class="badge bg-warning bg-opacity-25 text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Waspada (Redaman Tinggi)</span>`;
+            rxBox.className = "fs-4 fw-bold font-mono text-warning";
+            rxPill.innerHTML = `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.72rem; white-space: nowrap;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Waspada</span>`;
         } else {
-            rxBox.className = "fs-4 fw-bold mt-1 font-mono text-danger";
-            rxPill.innerHTML = `<span class="badge bg-danger bg-opacity-25 text-danger"><i class="bi bi-exclamation-octagon me-1"></i>Sinyal Kritis / Rendah</span>`;
+            rxBox.className = "fs-4 fw-bold font-mono text-danger";
+            rxPill.innerHTML = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.72rem; white-space: nowrap;"><i class="bi bi-exclamation-octagon-fill me-1"></i>Sinyal Kritis</span>`;
         }
     } else {
         rxBox.innerText = iface.is_sfp ? "N/A" : "-";
-        rxBox.className = "fs-4 fw-bold mt-1 font-mono text-secondary";
-        rxPill.innerHTML = `<span class="text-secondary small">Transceiver tanpa sensor DDM</span>`;
+        if (rxUnit) rxUnit.style.display = 'none';
+        rxBox.className = "fs-4 fw-bold font-mono text-secondary";
+        rxPill.innerHTML = `<span class="text-secondary small" style="font-size: 0.72rem;">Tanpa sensor DDM</span>`;
     }
 
     // Suhu Modul SFP
     const tempBox = document.getElementById('sfpTempVal');
     const tempStatus = document.getElementById('sfpTempStatus');
     if (iface.sfp_temperature !== null && iface.sfp_temperature !== undefined) {
-        tempBox.innerText = `${iface.sfp_temperature} °C`;
+        tempBox.innerText = iface.sfp_temperature;
         if (iface.sfp_temperature >= 65) {
-            tempBox.className = "fs-4 fw-bold mt-1 font-mono text-danger";
-            tempStatus.innerHTML = `<span class="text-danger"><i class="bi bi-thermometer-high"></i> Suhu Kritis (>65°C)</span>`;
+            tempBox.className = "fs-4 fw-bold font-mono text-danger";
+            tempStatus.innerHTML = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.72rem;"><i class="bi bi-thermometer-high me-1"></i>Kritis (>65°C)</span>`;
         } else if (iface.sfp_temperature >= 55) {
-            tempBox.className = "fs-4 fw-bold mt-1 font-mono text-warning";
-            tempStatus.innerHTML = `<span class="text-warning"><i class="bi bi-thermometer-half"></i> Suhu Hangat (>55°C)</span>`;
+            tempBox.className = "fs-4 fw-bold font-mono text-warning";
+            tempStatus.innerHTML = `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.72rem;"><i class="bi bi-thermometer-half me-1"></i>Hangat (>55°C)</span>`;
         } else {
-            tempBox.className = "fs-4 fw-bold mt-1 font-mono text-success";
-            tempStatus.innerHTML = `<span class="text-success"><i class="bi bi-check2"></i> Normal</span>`;
+            tempBox.className = "fs-4 fw-bold font-mono text-success";
+            tempStatus.innerHTML = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.72rem;"><i class="bi bi-check-circle-fill me-1"></i>Normal</span>`;
         }
     } else {
         tempBox.innerText = "-";
-        tempBox.className = "fs-4 fw-bold mt-1 font-mono text-secondary";
-        tempStatus.innerHTML = `<span class="text-secondary">Tidak ada sensor</span>`;
+        tempBox.className = "fs-4 fw-bold font-mono text-secondary";
+        tempStatus.innerHTML = `<span class="text-secondary small" style="font-size: 0.72rem;">Tidak ada sensor</span>`;
     }
 
     // TX Power
     const txBox = document.getElementById('sfpTxPowerVal');
+    const txUnit = document.getElementById('sfpTxPowerUnit');
     if (iface.sfp_tx_power !== null && iface.sfp_tx_power !== undefined) {
-        txBox.innerText = `${iface.sfp_tx_power.toFixed(3)} dBm`;
+        txBox.innerText = iface.sfp_tx_power.toFixed(3);
+        if (txUnit) txUnit.style.display = 'inline';
     } else {
         txBox.innerText = "-";
+        if (txUnit) txUnit.style.display = 'none';
     }
 
     // Detail Hardware Transceiver
@@ -1508,13 +1566,22 @@ function openSfpModal(ifaceId) {
     document.getElementById('sfpVoltVal').innerText = iface.sfp_voltage ? `${iface.sfp_voltage.toFixed(2)} V` : "-";
     document.getElementById('sfpAliasVal').innerText = iface.alias || "-";
 
+    // RX LOSS & TX FAULT - FIX INVISIBLE TEXT BY USING CRISP CONTRAST BADGES
     document.getElementById('sfpLossVal').innerHTML = iface.sfp_rx_loss ? 
-        `<span class="badge bg-danger bg-opacity-20 text-danger border border-danger border-opacity-25 font-mono">LOSS OF SIGNAL (Kabel Putus)</span>` : 
-        `<span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25 font-mono">Normal (Signal OK)</span>`;
+        `<span class="badge d-inline-flex align-items-center gap-1 font-mono" style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); font-size: 0.74rem; padding: 4px 10px;">
+            <i class="bi bi-exclamation-octagon-fill"></i> LOSS OF SIGNAL (Kabel Fiber Putus)
+         </span>` : 
+        `<span class="badge d-inline-flex align-items-center gap-1 font-mono" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 0.74rem; padding: 4px 10px;">
+            <i class="bi bi-shield-check"></i> Normal (Signal OK)
+         </span>`;
     
     document.getElementById('sfpFaultVal').innerHTML = iface.sfp_tx_fault ? 
-        `<span class="badge bg-danger bg-opacity-20 text-danger border border-danger border-opacity-25 font-mono">FAULT (Laser Bermasalah)</span>` : 
-        `<span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25 font-mono">Normal (Laser OK)</span>`;
+        `<span class="badge d-inline-flex align-items-center gap-1 font-mono" style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); font-size: 0.74rem; padding: 4px 10px;">
+            <i class="bi bi-exclamation-triangle-fill"></i> FAULT (Laser Bermasalah)
+         </span>` : 
+        `<span class="badge d-inline-flex align-items-center gap-1 font-mono" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 0.74rem; padding: 4px 10px;">
+            <i class="bi bi-check-circle-fill"></i> Normal (Laser OK)
+         </span>`;
 
     const sfpModal = new bootstrap.Modal(document.getElementById('sfpDetailModal'));
     sfpModal.show();
