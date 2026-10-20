@@ -157,19 +157,19 @@
 <!-- DEVICE TABLE -->
 <div class="glass-card">
     <div class="table-responsive">
-        <table class="table align-middle" id="deviceTable">
+        <table class="table align-middle mb-0" id="deviceTable" style="font-size: 0.84rem;">
             <thead>
-                <tr>
-                    <th style="width: 100px; white-space: nowrap;">Status</th>
-                    <th style="min-width: 220px; max-width: 260px;">Perangkat</th>
-                    <th style="width: 145px; white-space: nowrap;">IP & SNMP</th>
-                    <th style="width: 110px; white-space: nowrap;">Site</th>
-                    <th style="width: 125px; white-space: nowrap;">CPU Load</th>
-                    <th style="width: 135px; white-space: nowrap;">Memory</th>
-                    <th style="width: 115px; white-space: nowrap;">Suhu / Volt</th>
-                    <th style="width: 320px; min-width: 300px; white-space: nowrap;">Traffic Real-Time</th>
-                    <th style="width: 135px; white-space: nowrap;">Uptime</th>
-                    <th class="text-end pe-4" style="min-width: 175px; white-space: nowrap;">Aksi</th>
+                <tr class="text-secondary small" style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                    <th style="width: 75px; text-align: center; white-space: nowrap;">Status</th>
+                    <th style="min-width: 170px;">Perangkat</th>
+                    <th style="width: 125px; white-space: nowrap;">IP & SNMP</th>
+                    <th style="width: 85px; white-space: nowrap;">Site</th>
+                    <th style="width: 80px; white-space: nowrap;">CPU</th>
+                    <th style="width: 95px; white-space: nowrap;">Memory</th>
+                    <th style="width: 80px; text-align: center; white-space: nowrap;">Suhu</th>
+                    <th style="width: 205px; min-width: 190px;">Traffic Real-Time</th>
+                    <th style="width: 95px; white-space: nowrap;">Uptime</th>
+                    <th class="text-end pe-3" style="width: 145px; white-space: nowrap;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -180,149 +180,134 @@
                         data-type="{{ d.device_type }}" 
                         data-site="{{ d.site or 'Fasilkom' }}" 
                         data-status="{% if d.is_online %}ONLINE{% else %}OFFLINE{% endif %}">
-                        <td style="white-space: nowrap;">
+                        <td class="text-center" style="white-space: nowrap;">
                             {% if d.is_online %}
-                                <span class="status-pill online">
-                                    <span class="pulse-dot online"></span> ONLINE
+                                <span class="badge font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.68rem; padding: 2.5px 6px;">
+                                    ● ONLINE
                                 </span>
                             {% else %}
-                                <span class="status-pill offline">
-                                    <span class="pulse-dot offline"></span> OFFLINE
+                                <span class="badge font-mono" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.68rem; padding: 2.5px 6px;">
+                                    ● OFFLINE
                                 </span>
                             {% endif %}
                         </td>
-                        <td style="min-width: 210px; max-width: 260px;">
-                            <div class="d-flex align-items-center gap-2.5">
-                                <div class="p-2 rounded-2 flex-shrink-0" style="background: rgba(255, 255, 255, 0.04); color: #cbd5e1;">
+                        <td style="max-width: 185px;">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="p-1.5 rounded flex-shrink-0" style="background: rgba(255, 255, 255, 0.04); color: #cbd5e1; font-size: 1rem;">
                                     {% if d.device_type == 'mikrotik' %}
-                                        <i class="bi bi-hdd-network text-info fs-5"></i>
+                                        <i class="bi bi-hdd-network text-info"></i>
                                     {% elif d.device_type == 'access_point' %}
-                                        <i class="bi bi-router text-warning fs-5"></i>
+                                        <i class="bi bi-router text-warning"></i>
                                     {% else %}
-                                        <i class="bi bi-ethernet text-primary fs-5"></i>
+                                        <i class="bi bi-ethernet text-primary"></i>
                                     {% endif %}
                                 </div>
                                 <div class="overflow-hidden">
-                                    <div class="fw-bold text-light text-truncate" title="{{ d.name }}">{{ d.name }}</div>
-                                    <div class="text-secondary small font-mono text-truncate" style="font-size: 0.72rem;" title="{{ d.model_info }}">{{ d.model_info or '-' }}</div>
+                                    <div class="fw-bold text-light text-truncate" style="font-size: 0.85rem;" title="{{ d.name }}">{{ d.name }}</div>
+                                    <div class="text-secondary font-mono text-truncate" style="font-size: 0.68rem;" title="{{ d.model_info }}">{{ d.model_info or '-' }}</div>
                                 </div>
                             </div>
                         </td>
                         <td style="white-space: nowrap;">
-                            <div class="font-mono text-light fw-medium">{{ d.ip }}</div>
-                            <div class="text-secondary" style="font-size: 0.72rem;">SNMP: v{{ d.snmp_version }} ({{ d.snmp_port }})</div>
+                            <div class="font-mono text-light fw-medium" style="font-size: 0.82rem;">{{ d.ip }}</div>
+                            <div class="text-secondary font-mono" style="font-size: 0.68rem;">v{{ d.snmp_version }} ({{ d.snmp_port }})</div>
                         </td>
                         <td style="white-space: nowrap;">
-                            <span class="badge" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: #e2e8f0;">
-                                <i class="bi bi-geo-alt me-1 text-secondary"></i>{{ d.site }}
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); color: #cbd5e1; font-size: 0.7rem; padding: 3px 6px;">
+                                <i class="bi bi-geo-alt me-0.5 text-secondary"></i>{{ d.site }}
                             </span>
                         </td>
-                        <td>
+                        <td style="white-space: nowrap;">
                             {% if d.cpu_usage is not none %}
-                                <div class="d-flex justify-content-between small mb-1">
+                                <div class="d-flex justify-content-between font-mono" style="font-size: 0.72rem;">
                                     <span class="text-secondary">Load:</span>
-                                    <span class="font-mono fw-bold {% if d.cpu_usage > 80 %}text-danger{% elif d.cpu_usage > 50 %}text-warning{% else %}text-success{% endif %}">
+                                    <span class="fw-bold {% if d.cpu_usage > 80 %}text-danger{% elif d.cpu_usage > 50 %}text-warning{% else %}text-success{% endif %}">
                                         {{ d.cpu_usage }}%
                                     </span>
                                 </div>
-                                <div class="progress" style="height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px;">
+                                <div class="progress mt-1" style="height: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px;">
                                     <div class="progress-bar {% if d.cpu_usage > 80 %}bg-danger{% elif d.cpu_usage > 50 %}bg-warning{% else %}bg-success{% endif %}" 
                                          role="progressbar" style="width: {{ d.cpu_usage }}%;"></div>
                                 </div>
                             {% else %}
-                                <span class="text-secondary small">-</span>
+                                <span class="text-secondary small font-mono">-</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td style="white-space: nowrap;">
                             {% if d.memory_usage is not none %}
-                                <div class="d-flex justify-content-between small mb-1">
-                                    <span class="text-secondary">{{ d.memory_used_mb or 0 }}MB</span>
-                                    <span class="font-mono fw-bold {% if d.memory_usage > 85 %}text-danger{% elif d.memory_usage > 65 %}text-warning{% else %}text-info{% endif %}">
+                                <div class="d-flex justify-content-between font-mono gap-1" style="font-size: 0.72rem;">
+                                    <span class="text-secondary">{{ d.memory_used_mb or 0 }}M</span>
+                                    <span class="fw-bold {% if d.memory_usage > 85 %}text-danger{% elif d.memory_usage > 65 %}text-warning{% else %}text-info{% endif %}">
                                         {{ d.memory_usage }}%
                                     </span>
                                 </div>
-                                <div class="progress" style="height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px;">
+                                <div class="progress mt-1" style="height: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px;">
                                     <div class="progress-bar {% if d.memory_usage > 85 %}bg-danger{% elif d.memory_usage > 65 %}bg-warning{% else %}bg-info{% endif %}" 
                                          role="progressbar" style="width: {{ d.memory_usage }}%;"></div>
                                 </div>
                             {% else %}
-                                <span class="text-secondary small">-</span>
+                                <span class="text-secondary small font-mono">-</span>
                             {% endif %}
                         </td>
-                        <td style="white-space: nowrap;">
-                            <div class="d-flex flex-column gap-1">
-                                {% if d.temperature is not none %}
-                                    <span class="badge font-mono" style="background: {% if d.temperature >= 65 %}rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);{% elif d.temperature >= 55 %}rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);{% else %}rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);{% endif %}">
-                                        <i class="bi bi-thermometer-half me-1"></i>{{ d.temperature }} °C
-                                    </span>
-                                {% else %}
-                                    <span class="text-secondary small">Suhu: N/A</span>
-                                {% endif %}
+                        <td class="text-center" style="white-space: nowrap;">
+                            {% if d.temperature is not none %}
+                                <span class="badge font-mono" style="background: {% if d.temperature >= 65 %}rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);{% elif d.temperature >= 55 %}rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);{% else %}rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);{% endif %} font-size: 0.72rem; padding: 3px 6px;">
+                                    <i class="bi bi-thermometer-half"></i> {{ d.temperature }} °C
+                                </span>
+                            {% else %}
+                                <span class="text-secondary font-mono" style="font-size: 0.72rem;">-</span>
+                            {% endif %}
+                            {% if d.voltage is not none %}
+                                <div class="text-secondary font-mono mt-0.5" style="font-size: 0.65rem;">{{ d.voltage }} V</div>
+                            {% endif %}
+                        </td>
+                        <td style="min-width: 190px; max-width: 215px;">
+                            <div class="d-flex justify-content-between align-items-center mb-0.5" style="font-size: 0.75rem;">
+                                <span class="font-mono text-cyan fw-bold" style="white-space: nowrap;">
+                                    <i class="bi bi-arrow-down-short"></i>{{ d.rx_display }}
+                                </span>
+                                <span class="text-secondary font-mono" style="font-size: 0.67rem; white-space: nowrap;">{{ d.rx_byte_display }}</span>
+                            </div>
 
-                                {% if d.voltage is not none %}
-                                    <span class="text-secondary font-mono" style="font-size: 0.72rem;">
-                                        <i class="bi bi-lightning-charge me-1 text-warning"></i>{{ d.voltage }} V
+                            <div class="d-flex justify-content-between align-items-center mb-1" style="font-size: 0.75rem;">
+                                <span class="font-mono fw-bold" style="color: #c084fc; white-space: nowrap;">
+                                    <i class="bi bi-arrow-up-short"></i>{{ d.tx_display }}
+                                </span>
+                                <span class="text-secondary font-mono" style="font-size: 0.67rem; white-space: nowrap;">{{ d.tx_byte_display }}</span>
+                            </div>
+
+                            <div class="progress" style="height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 2px;">
+                                <div class="progress-bar bg-info" style="width: {{ d.rx_percent }}%;" title="Download: {{ d.rx_percent }}%"></div>
+                                <div class="progress-bar" style="width: {{ d.tx_percent }}%; background: #a855f7;" title="Upload: {{ d.tx_percent }}%"></div>
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center text-secondary mt-1 font-mono" style="font-size: 0.67rem; white-space: nowrap;">
+                                <span>Tot: <b class="text-light">{{ d.total_display }}</b></span>
+                                {% if d.top_interface %}
+                                    <span class="text-truncate ms-1" style="max-width: 95px;" title="Top: {{ d.top_interface }}">
+                                        <i class="bi bi-activity text-info me-0.5"></i>{{ d.top_interface.split(' ')[0] }}
                                     </span>
                                 {% endif %}
                             </div>
                         </td>
-                        <td style="min-width: 300px; width: 320px;">
-                            <div class="p-2 rounded-3" style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.06);">
-                                <!-- Download Row -->
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="badge d-inline-flex align-items-center gap-1" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.25); font-size: 0.68rem; padding: 2px 6px;">
-                                        <i class="bi bi-arrow-down"></i> DL
-                                    </span>
-                                    <div class="font-mono text-end" style="white-space: nowrap;">
-                                        <span class="fw-bold" style="color: #38bdf8; font-size: 0.82rem;">{{ d.rx_display }}</span>
-                                        <span class="text-secondary ms-1" style="font-size: 0.7rem;">({{ d.rx_byte_display }})</span>
-                                    </div>
-                                </div>
-
-                                <!-- Upload Row -->
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="badge d-inline-flex align-items-center gap-1" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.25); font-size: 0.68rem; padding: 2px 6px;">
-                                        <i class="bi bi-arrow-up"></i> UL
-                                    </span>
-                                    <div class="font-mono text-end" style="white-space: nowrap;">
-                                        <span class="fw-bold" style="color: #d8b4fe; font-size: 0.82rem;">{{ d.tx_display }}</span>
-                                        <span class="text-secondary ms-1" style="font-size: 0.7rem;">({{ d.tx_byte_display }})</span>
-                                    </div>
-                                </div>
-
-                                <!-- Split Progress Bar -->
-                                <div class="progress" style="height: 4px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; margin-bottom: 6px;">
-                                    <div class="progress-bar" style="width: {{ d.rx_percent }}%; background: #06b6d4;" title="Download: {{ d.rx_percent }}%"></div>
-                                    <div class="progress-bar" style="width: {{ d.tx_percent }}%; background: #a855f7;" title="Upload: {{ d.tx_percent }}%"></div>
-                                </div>
-
-                                <!-- Footer: Total & Top Interface -->
-                                <div class="d-flex justify-content-between align-items-center pt-1 border-top border-secondary border-opacity-10 text-secondary" style="font-size: 0.68rem; white-space: nowrap;">
-                                    <span>Total: <strong class="text-light font-mono">{{ d.total_display }}</strong></span>
-                                    {% if d.top_interface %}
-                                        <span class="text-truncate ms-2" style="max-width: 145px;" title="Top: {{ d.top_interface }}">
-                                            <i class="bi bi-activity text-info me-0.5"></i><span class="text-light font-mono">{{ d.top_interface }}</span>
-                                        </span>
-                                    {% endif %}
-                                </div>
+                        <td style="white-space: nowrap;">
+                            <div class="font-mono text-light fw-medium" style="font-size: 0.78rem;">{{ d.uptime }}</div>
+                            <div class="text-secondary font-mono" style="font-size: 0.67rem;" title="{{ d.last_polled }}">
+                                <i class="bi bi-clock-history me-0.5"></i>{{ d.last_polled.split(' ')[1] if ' ' in d.last_polled else d.last_polled }}
                             </div>
                         </td>
-                        <td style="white-space: nowrap;">
-                            <div class="font-mono text-light small fw-medium">{{ d.uptime }}</div>
-                            <div class="text-secondary" style="font-size: 0.7rem;"><i class="bi bi-clock-history me-1"></i>{{ d.last_polled }}</div>
-                        </td>
-                        <td class="text-end pe-4" style="white-space: nowrap;">
+                        <td class="text-end pe-3" style="white-space: nowrap;">
                             <div class="d-inline-flex align-items-center gap-1">
-                                <button class="btn btn-sm btn-modern-primary" title="Detail Traffic & Interface" onclick="openInterfacesModalById({{ d.id }})">
+                                <button class="btn btn-sm btn-modern-primary py-1 px-2" title="Detail Traffic & Interface" onclick="openInterfacesModalById({{ d.id }})" style="font-size: 0.75rem;">
                                     <i class="bi bi-bar-chart-line me-1"></i>Traffic
                                 </button>
-                                <button class="btn btn-sm btn-modern-outline" title="Poll Sekarang" onclick="pollSingleDevice({{ d.id }}, this)">
+                                <button class="btn btn-sm btn-modern-outline py-1 px-1.5" title="Poll Sekarang" onclick="pollSingleDevice({{ d.id }}, this)" style="font-size: 0.75rem;">
                                     <i class="bi bi-arrow-clockwise"></i>
                                 </button>
-                                <button class="btn btn-sm btn-modern-outline" title="Edit Perangkat" onclick="openEditModalById({{ d.id }})">
+                                <button class="btn btn-sm btn-modern-outline py-1 px-1.5" title="Edit Perangkat" onclick="openEditModalById({{ d.id }})" style="font-size: 0.75rem;">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <button class="btn btn-sm btn-modern-outline text-danger border-danger border-opacity-25" title="Hapus" onclick="deleteDeviceById({{ d.id }})">
+                                <button class="btn btn-sm btn-modern-outline py-1 px-1.5 text-danger border-danger border-opacity-25" title="Hapus" onclick="deleteDeviceById({{ d.id }})" style="font-size: 0.75rem;">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </div>
