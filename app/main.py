@@ -509,10 +509,48 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
     devices_data = []
     total_network_traffic_mbps = 0.0
 
+    def format_speed_str(mbps: float):
+        if not mbps or mbps <= 0:
+            return "0.00 Mbps", "0 KB/s"
+        bytes_sec = (mbps * 1_000_000) / 8.0
+        if bytes_sec >= 1024 * 1024 * 1024:
+            byte_str = f"{bytes_sec / (1024**3):.2f} GB/s"
+        elif bytes_sec >= 1024 * 1024:
+            byte_str = f"{bytes_sec / (1024**2):.1f} MB/s"
+        else:
+            byte_str = f"{bytes_sec / 1024:.0f} KB/s"
+            
+        if mbps >= 1000:
+            bit_str = f"{mbps / 1000.0:.2f} Gbps"
+        elif mbps < 1:
+            bit_str = f"{mbps * 1000:.0f} Kbps"
+        else:
+            bit_str = f"{mbps:.2f} Mbps"
+        return bit_str, byte_str
+
     for d in devices:
         total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in d.interfaces)
         total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in d.interfaces)
-        total_network_traffic_mbps += (total_rx + total_tx)
+        total_bw = total_rx + total_tx
+        total_network_traffic_mbps += total_bw
+
+        # Cari interface dengan trafik tertinggi
+        top_iface_str = None
+        if d.interfaces:
+            sorted_ifaces = sorted(d.interfaces, key=lambda x: (x.rx_rate_mbps or 0) + (x.tx_rate_mbps or 0), reverse=True)
+            if sorted_ifaces:
+                top_item = sorted_ifaces[0]
+                top_rate = (top_item.rx_rate_mbps or 0) + (top_item.tx_rate_mbps or 0)
+                if top_rate > 0:
+                    top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
+                    top_iface_str = f"{top_item.name} ({top_rate_label})"
+
+        rx_bit_str, rx_byte_str = format_speed_str(total_rx)
+        tx_bit_str, tx_byte_str = format_speed_str(total_tx)
+        tot_bit_str, tot_byte_str = format_speed_str(total_bw)
+
+        rx_pct = round((total_rx / total_bw) * 100, 1) if total_bw > 0 else 50
+        tx_pct = round(100 - rx_pct, 1) if total_bw > 0 else 50
 
         devices_data.append({
             "id": d.id,
@@ -536,8 +574,20 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
             "interface_count": len(d.interfaces),
             "total_rx_mbps": round(total_rx, 2),
             "total_tx_mbps": round(total_tx, 2),
+            "total_bw_mbps": round(total_bw, 2),
+            "rx_display": rx_bit_str,
+            "rx_byte_display": rx_byte_str,
+            "tx_display": tx_bit_str,
+            "tx_byte_display": tx_byte_str,
+            "total_display": tot_bit_str,
+            "total_byte_display": tot_byte_str,
+            "rx_percent": rx_pct,
+            "tx_percent": tx_pct,
+            "top_interface": top_iface_str,
             "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "Belum ada"
         })
+
+    fleet_bit_str, fleet_byte_str = format_speed_str(total_network_traffic_mbps)
 
     return templates.TemplateResponse(
         request=request,
@@ -552,7 +602,9 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
                 "online_devices": online_devices,
                 "offline_devices": offline_devices,
                 "hot_devices": hot_devices,
-                "total_traffic_mbps": round(total_network_traffic_mbps, 2)
+                "total_traffic_mbps": round(total_network_traffic_mbps, 2),
+                "total_traffic_display": fleet_bit_str,
+                "total_traffic_byte": fleet_byte_str
             }
         }
     )
