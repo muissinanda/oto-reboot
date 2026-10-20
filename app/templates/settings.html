@@ -193,9 +193,9 @@
 
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label small fw-semibold text-secondary">Interval Cek Status (Detik)</label>
-                        <input type="number" name="ping_interval" class="form-control font-mono" value="{{ settings.ping_interval }}" required>
-                        <div class="text-secondary small mt-1" style="font-size: 0.75rem;">Frekuensi latar belakang mengecek konektivitas port 22/ping AP.</div>
+                        <label class="form-label small fw-semibold text-secondary">Interval Cek Latency & Status (Detik)</label>
+                        <input type="number" name="ping_interval" class="form-control font-mono" value="{{ settings.ping_interval }}" min="10" required>
+                        <div class="text-secondary small mt-1" style="font-size: 0.75rem;">Frekuensi pengecekan berkala (Contoh: <code>300</code> untuk setiap 5 menit sekali).</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-semibold text-secondary">Timeout Probe (Detik)</label>

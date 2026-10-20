@@ -465,7 +465,7 @@ async def page_settings(request: Request, db: Session = Depends(get_db)):
         "google_client_id": get_setting(db, "google_client_id", ""),
         "google_client_secret": get_setting(db, "google_client_secret", ""),
         "google_default_site": get_setting(db, "google_default_site", "Fasilkom"),
-        "ping_interval": get_setting(db, "ping_interval", "30"),
+        "ping_interval": get_setting(db, "ping_interval", "300"),
         "ping_timeout": get_setting(db, "ping_timeout", "2"),
     }
     return templates.TemplateResponse(
@@ -952,4 +952,13 @@ async def api_save_settings(request: Request, db: Session = Depends(get_db)):
     data = await request.json()
     for key, val in data.items():
         set_setting(db, key, str(val))
+
+    # Jika interval ping diubah, update background job scheduler langsung
+    if "ping_interval" in data:
+        try:
+            from app.scheduler import update_monitor_interval
+            update_monitor_interval(int(data["ping_interval"]))
+        except Exception:
+            pass
+
     return {"status": "success", "message": "Pengaturan berhasil disimpan"}

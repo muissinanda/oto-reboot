@@ -85,16 +85,35 @@ def reload_scheduler_jobs():
     finally:
         db.close()
 
+def update_monitor_interval(interval_sec: int):
+    """
+    Update interval waktu ping probe monitor secara dinamis saat setting diubah
+    """
+    if scheduler.running:
+        try:
+            scheduler.reschedule_job(
+                "ap_monitor_job",
+                trigger=IntervalTrigger(seconds=interval_sec)
+            )
+        except Exception:
+            scheduler.add_job(
+                run_monitor_cycle,
+                trigger=IntervalTrigger(seconds=interval_sec),
+                id="ap_monitor_job",
+                name="AP Status Ping Monitor",
+                replace_existing=True
+            )
+
 def setup_scheduler():
     """
     Inisialisasi background monitor & scheduler
     """
     if not scheduler.running:
         db = SessionLocal()
-        interval_sec = int(get_setting(db, "ping_interval", "30"))
+        interval_sec = int(get_setting(db, "ping_interval", "300"))
         db.close()
 
-        # Job 1: Monitor Status AP
+        # Job 1: Monitor Status AP (Default 300 detik = 5 menit)
         scheduler.add_job(
             run_monitor_cycle,
             trigger=IntervalTrigger(seconds=interval_sec),

@@ -165,13 +165,18 @@ def init_db():
         "google_client_id": "",
         "google_client_secret": "",
         "google_default_site": "Fasilkom",
-        "ping_interval": "30", # detik
+        "ping_interval": "300", # detik (5 menit)
         "ping_timeout": "2", # detik
         "app_title": "OTO REBOOT - AP Manager"
     }
     for k, v in default_settings.items():
         if not db.query(AppSetting).filter(AppSetting.key == k).first():
             db.add(AppSetting(key=k, value=v))
+    
+    # Otomatis update setting lama jika masih 30 detik ke 300 detik (5 menit)
+    pi_setting = db.query(AppSetting).filter(AppSetting.key == "ping_interval").first()
+    if pi_setting and pi_setting.value == "30":
+        pi_setting.value = "300"
     db.commit()
     db.close()
 
