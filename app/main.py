@@ -1195,9 +1195,9 @@ async def api_poll_device_manual(device_id: int, request: Request, db: Session =
     if not user_can_access_site(user, dev.site):
         return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak"})
     
-    ok = await poll_single_device(device_id)
+    ok, err_msg = await poll_single_device(device_id)
     if not ok:
-        return JSONResponse(status_code=500, content={"status": "error", "message": "Gagal menghubungi SNMP perangkat. Periksa koneksi atau IP/Community."})
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"{err_msg}"})
     
     return {"status": "success", "message": f"Berhasil memperbarui data {dev.name}"}
 
