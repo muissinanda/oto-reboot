@@ -62,27 +62,38 @@ OID_MT_OPT_TX_FAULT = "1.3.6.1.4.1.14988.1.1.19.1.1.4"    # 0 = Normal, 1 = Lase
 OID_MT_OPT_WAVELENGTH = "1.3.6.1.4.1.14988.1.1.19.1.1.5"  # Wavelength (nm, e.g. 1310, 850)
 OID_MT_OPT_TEMP = "1.3.6.1.4.1.14988.1.1.19.1.1.6"        # Suhu SFP (°C)
 OID_MT_OPT_VOLTAGE = "1.3.6.1.4.1.14988.1.1.19.1.1.7"     # Supply Voltage (mV / V)
-OID_MT_OPT_TX_POWER = "1.3.6.1.4.1.14988.1.1.19.1.1.9"    # TX Power (dBm)
-OID_MT_OPT_RX_POWER = "1.3.6.1.4.1.14988.1.1.19.1.1.10"   # RX Power (Redaman dBm)
+OID_MT_OPT_TX_POWER = "1.3.6.1.4.1.14988.1.1.19.1.1.9"    # TX Power (0.001 dBm)
+OID_MT_OPT_RX_POWER = "1.3.6.1.4.1.14988.1.1.19.1.1.10"   # RX Power / Redaman (0.001 dBm)
 OID_MT_OPT_VENDOR = "1.3.6.1.4.1.14988.1.1.19.1.1.11"     # Merk / Vendor SFP
 OID_MT_OPT_SERIAL = "1.3.6.1.4.1.14988.1.1.19.1.1.12"     # Serial Number SFP
-OID_MT_OPT_PART = "1.3.6.1.4.1.14988.1.1.19.1.1.13"       # Part Number SFP
+OID_MT_OPT_REVISION = "1.3.6.1.4.1.14988.1.1.19.1.1.13"   # Revision SFP (A0)
+OID_MT_OPT_PART = "1.3.6.1.4.1.14988.1.1.19.1.1.14"       # Part Number SFP (SFP-10G-LH-SM)
 
 def parse_optical_power(val: Any) -> Optional[float]:
-    """Konversi nilai optical power ke format dBm standar"""
+    """Konversi nilai optical power ke format dBm standar (di MikroTik 0.001 dBm)"""
     if val is None:
         return None
     try:
         f = float(val)
         if f == 0:
             return 0.0
-        # Jika nilai dalam satuan 0.01 dBm (e.g. -1450 -> -14.50 dBm)
-        if abs(f) >= 100 and abs(f) < 10000:
-            return round(f / 100.0, 2)
-        # Jika nilai dalam satuan 0.001 dBm (e.g. -14500 -> -14.50 dBm)
-        if abs(f) >= 10000:
-            return round(f / 1000.0, 2)
-        return round(f, 2)
+        # Di MikroTik SNMP, optical power dilaporkan dalam satuan milli-dBm (0.001 dBm)
+        # Contoh: -2557 -> -2.557 dBm, -1782 -> -1.782 dBm, -15400 -> -15.400 dBm
+        if abs(f) >= 40:
+            return round(f / 1000.0, 3)
+        return round(f, 3)
+    except Exception:
+        return None
+
+def parse_wavelength(val: Any) -> Optional[int]:
+    """Konversi panjang gelombang ke nm (MikroTik mengirim 131000 untuk 1310.00 nm)"""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if f >= 10000:
+            return int(round(f / 100.0))
+        return int(round(f))
     except Exception:
         return None
 
@@ -520,6 +531,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                             walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_RX_POWER, 25),
                             walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_VENDOR, 25),
                             walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_SERIAL, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_REVISION, 25),
                             walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_PART, 25),
                             return_exceptions=True
                         )
@@ -532,21 +544,26 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         opt_rx_pow = res_opt[6] if isinstance(res_opt[6], dict) else {}
                         opt_vendor = res_opt[7] if isinstance(res_opt[7], dict) else {}
                         opt_serial = res_opt[8] if isinstance(res_opt[8], dict) else {}
-                        opt_part = res_opt[9] if isinstance(res_opt[9], dict) else {}
+                        opt_rev = res_opt[9] if isinstance(res_opt[9], dict) else {}
+                        opt_part = res_opt[10] if isinstance(res_opt[10], dict) else {}
 
                         for o_idx, o_name_val in opt_names.items():
                             k_name = str(o_name_val).strip().lower()
+                            # Part number bisa di .14, atau fallback ke .13
+                            part_num = str(opt_part.get(o_idx, "")).strip() or str(opt_rev.get(o_idx, "")).strip() or None
+                            serial_num = str(opt_serial.get(o_idx, "")).strip() or None
+
                             optical_by_name[k_name] = {
                                 "rx_loss": bool(int(opt_rx_loss.get(o_idx, 0)) == 1),
                                 "tx_fault": bool(int(opt_tx_fault.get(o_idx, 0)) == 1),
-                                "wavelength": int(opt_wave.get(o_idx, 0)) if opt_wave.get(o_idx) else None,
+                                "wavelength": parse_wavelength(opt_wave.get(o_idx)),
                                 "temperature": parse_optical_temp(opt_temp.get(o_idx)),
                                 "voltage": parse_optical_voltage(opt_volt.get(o_idx)),
                                 "tx_power": parse_optical_power(opt_tx_pow.get(o_idx)),
                                 "rx_power": parse_optical_power(opt_rx_pow.get(o_idx)),
                                 "vendor": str(opt_vendor.get(o_idx, "")).strip() or None,
-                                "serial": str(opt_serial.get(o_idx, "")).strip() or None,
-                                "part": str(opt_part.get(o_idx, "")).strip() or None,
+                                "serial": serial_num,
+                                "part": part_num,
                             }
                 except Exception:
                     pass

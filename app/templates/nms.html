@@ -1292,7 +1292,7 @@ function renderInterfacesTable() {
             opticalHtml = `
                 <div class="d-flex align-items-center gap-1 flex-wrap cursor-pointer" onclick="openSfpModal(${iface.id})" title="Klik untuk lihat detail SFP">
                     <span class="badge font-mono border border-opacity-25 ${rxPillClass}" style="font-size: 0.72rem;">
-                        <i class="bi ${rxIcon} me-1"></i>${iface.sfp_rx_loss ? 'LOS Putus' : iface.sfp_rx_power.toFixed(1) + ' dBm'}
+                        <i class="bi ${rxIcon} me-1"></i>${iface.sfp_rx_loss ? 'LOS Putus' : iface.sfp_rx_power.toFixed(2) + ' dBm'}
                     </span>
                     ${iface.sfp_temperature !== null && iface.sfp_temperature !== undefined ? 
                         `<span class="badge font-mono" style="background: rgba(255,255,255,0.06); color: #cbd5e1; font-size: 0.68rem;" title="Suhu Transceiver SFP">${iface.sfp_temperature}°C</span>` : ''}
@@ -1430,7 +1430,7 @@ function openSfpModal(ifaceId) {
     const rxBox = document.getElementById('sfpRxPowerVal');
     const rxPill = document.getElementById('sfpRxPowerPill');
     if (iface.sfp_rx_power !== null && iface.sfp_rx_power !== undefined) {
-        rxBox.innerText = `${iface.sfp_rx_power.toFixed(2)} dBm`;
+        rxBox.innerText = `${iface.sfp_rx_power.toFixed(3)} dBm`;
         if (iface.sfp_rx_loss) {
             rxBox.className = "fs-4 fw-bold mt-1 font-mono text-danger";
             rxPill.innerHTML = `<span class="badge bg-danger bg-opacity-25 text-danger"><i class="bi bi-x-circle me-1"></i>Loss of Signal (Kabel Fiber Putus)</span>`;
@@ -1477,7 +1477,10 @@ function openSfpModal(ifaceId) {
     // TX Power
     const txBox = document.getElementById('sfpTxPowerVal');
     if (iface.sfp_tx_power !== null && iface.sfp_tx_power !== undefined) {
-        txBox.innerText = `${iface.sfp_tx_power.toFixed(2)} dBm`;
+        txBox.innerText = `${iface.sfp_tx_power.toFixed(3)} dBm`;
+    } else {
+        txBox.innerText = "-";
+    }
     } else {
         txBox.innerText = "-";
     }
