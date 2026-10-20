@@ -2,7 +2,22 @@ import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import paramiko
+from paramiko.transport import Transport
 from app.database import SessionLocal, AccessPoint, RebootLog, get_setting
+
+# Aktifkan KEX dan Host Key legacy agar kompatibel dengan Dropbear SSH pada AP UniFi & Ruckus versi lawas
+LEGACY_KEX = (
+    "diffie-hellman-group14-sha1",
+    "diffie-hellman-group-exchange-sha1",
+    "diffie-hellman-group1-sha1",
+)
+LEGACY_KEYS = (
+    "ssh-rsa",
+    "ssh-dss",
+)
+
+Transport._preferred_kex = tuple(k for k in LEGACY_KEX if k not in Transport._preferred_kex) + Transport._preferred_kex
+Transport._preferred_keys = tuple(k for k in LEGACY_KEYS if k not in Transport._preferred_keys) + Transport._preferred_keys
 
 MAX_WORKERS = 25
 
@@ -71,15 +86,36 @@ def execute_ssh_reboot(ap_id: int, trigger_type: str = "manual", schedule_name: 
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
         try:
-            ssh.connect(
-                hostname=ap.ip, 
-                port=port, 
-                username=username, 
-                password=password, 
-                timeout=global_timeout,
-                banner_timeout=global_timeout,
-                auth_timeout=global_timeout
-            )
+            try:
+                ssh.connect(
+                    hostname=ap.ip, 
+                    port=port, 
+                    username=username, 
+                    password=password, 
+                    timeout=global_timeout,
+                    banner_timeout=global_timeout,
+                    auth_timeout=global_timeout,
+                    look_for_keys=False,
+                    allow_agent=False
+                )
+            except Exception as conn_err:
+                err_str = str(conn_err).lower()
+                # Jika error cipher / algorithm mismatch (Dropbear pada UniFi lama), coba fallback disabled_algorithms
+                if "incompatible" in err_str or "algorithm" in err_str or "key" in err_str:
+                    ssh.connect(
+                        hostname=ap.ip, 
+                        port=port, 
+                        username=username, 
+                        password=password, 
+                        timeout=global_timeout,
+                        banner_timeout=global_timeout,
+                        auth_timeout=global_timeout,
+                        look_for_keys=False,
+                        allow_agent=False,
+                        disabled_algorithms={"pubkeys": ["rsa-sha2-512", "rsa-sha2-256"]}
+                    )
+                else:
+                    raise conn_err
 
             # Eksekusi sesuai tipe perangkat
             if device_type == "ruckus":
