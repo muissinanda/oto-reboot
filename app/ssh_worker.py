@@ -5,7 +5,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import paramiko
 from paramiko.transport import Transport
-from app.database import SessionLocal, AccessPoint, RebootLog, get_setting
+from app.database import SessionLocal, AccessPoint, RebootLog, get_setting, now_wib
 
 # Daftarkan KEX dan Host Key legacy hanya jika didukung oleh modul internal Paramiko (mencegah KeyError)
 for kex_algo in ("diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1", "diffie-hellman-group-exchange-sha1"):
@@ -166,8 +166,8 @@ def execute_ssh_reboot(ap_id: int, trigger_type: str = "manual", schedule_name: 
 
             duration_ms = int((time.time() - start_time) * 1000)
             
-            # Update AP status & last_rebooted
-            ap.last_rebooted = datetime.utcnow()
+            # Update AP status & last_rebooted (WIB)
+            ap.last_rebooted = now_wib()
             
             # Catat log sukses
             log = RebootLog(
@@ -197,7 +197,7 @@ def execute_ssh_reboot(ap_id: int, trigger_type: str = "manual", schedule_name: 
             duration_ms = int((time.time() - start_time) * 1000)
 
             if fb_ok:
-                ap.last_rebooted = datetime.utcnow()
+                ap.last_rebooted = now_wib()
                 log = RebootLog(
                     ap_id=ap.id,
                     ap_name=ap.name,

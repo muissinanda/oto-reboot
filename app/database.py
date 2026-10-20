@@ -1,7 +1,14 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+# Standarisasi Waktu ke Waktu Indonesia Barat (WIB / UTC+7)
+WIB_TZ = timezone(timedelta(hours=7))
+
+def now_wib():
+    """Mengembalikan waktu saat ini dalam zona waktu WIB (UTC+7) naive datetime untuk SQLite"""
+    return datetime.now(WIB_TZ).replace(tzinfo=None)
 
 # Menentukan lokasi database SQLite di folder data
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +41,7 @@ class AccessPoint(Base):
     last_checked = Column(DateTime, nullable=True)
     last_rebooted = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True) # Monitor & reboot enabled
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_wib)
 
 class RebootSchedule(Base):
     __tablename__ = "reboot_schedules"
@@ -49,13 +56,13 @@ class RebootSchedule(Base):
     target_type = Column(String(20), default="all") # "all", "group", "selected"
     target_payload = Column(Text, nullable=True) # comma-separated IDs or group name
     last_run = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_wib)
 
 class RebootLog(Base):
     __tablename__ = "reboot_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, default=now_wib, index=True)
     ap_id = Column(Integer, nullable=True)
     ap_name = Column(String(100), nullable=False)
     ap_ip = Column(String(50), nullable=False)
@@ -92,7 +99,7 @@ class User(Base):
     role = Column(String(20), default="site_admin", nullable=False) # "superadmin" atau "site_admin"
     allowed_sites = Column(Text, default="*", nullable=False) # "*" untuk all, atau koma "Fasilkom,Fakultas Teknik"
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_wib)
 
 class AppSetting(Base):
     __tablename__ = "app_settings"

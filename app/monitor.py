@@ -4,7 +4,7 @@ import platform
 import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from app.database import SessionLocal, AccessPoint, get_setting
+from app.database import SessionLocal, AccessPoint, get_setting, now_wib
 
 def check_ap_status(ip: str, port: int = 22, timeout: float = 2.0):
     """
@@ -61,8 +61,8 @@ def run_monitor_cycle():
         with ThreadPoolExecutor(max_workers=25) as executor:
             results = list(executor.map(_check, ap_items))
 
-        # Update database
-        now = datetime.utcnow()
+        # Update database (WIB)
+        now = now_wib()
         for ap_id, is_up, latency in results:
             ap_obj = db.query(AccessPoint).filter(AccessPoint.id == ap_id).first()
             if ap_obj:

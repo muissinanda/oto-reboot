@@ -2,7 +2,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from app.database import SessionLocal, RebootSchedule, AccessPoint, get_setting
+from app.database import SessionLocal, RebootSchedule, AccessPoint, get_setting, now_wib
 from app.ssh_worker import reboot_aps_batch
 from app.monitor import run_monitor_cycle
 
@@ -46,7 +46,7 @@ def execute_scheduled_reboot(schedule_id: int):
         if ap_ids:
             reboot_aps_batch(ap_ids, trigger_type="scheduled", schedule_name=schedule.name)
 
-        schedule.last_run = datetime.utcnow()
+        schedule.last_run = now_wib()
         db.commit()
     finally:
         db.close()
