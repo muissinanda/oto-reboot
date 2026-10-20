@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, Text
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, Text, ForeignKey, BigInteger
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 # Standarisasi Waktu ke Waktu Indonesia Barat (WIB / UTC+7)
 WIB_TZ = timezone(timedelta(hours=7))
@@ -71,6 +71,58 @@ class RebootLog(Base):
     status = Column(String(20), nullable=False) # success, failed
     message = Column(Text, nullable=True)
     duration_ms = Column(Integer, default=0)
+
+class NetworkDevice(Base):
+    __tablename__ = "network_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    ip = Column(String(50), unique=True, index=True, nullable=False)
+    device_type = Column(String(50), default="mikrotik")  # mikrotik, switch, access_point, generic
+    snmp_version = Column(String(10), default="2c")       # 1, 2c
+    snmp_community = Column(String(50), default="public")
+    snmp_port = Column(Integer, default=161)
+    site = Column(String(100), default="Fasilkom")
+    is_active = Column(Boolean, default=True)
+    is_online = Column(Boolean, default=False)
+    uptime = Column(String(50), nullable=True)
+    cpu_usage = Column(Float, nullable=True)          # Persentase CPU (0-100%)
+    memory_usage = Column(Float, nullable=True)       # Persentase RAM (0-100%)
+    memory_total_mb = Column(Float, nullable=True)
+    memory_used_mb = Column(Float, nullable=True)
+    temperature = Column(Float, nullable=True)        # Derajat Celcius (°C)
+    voltage = Column(Float, nullable=True)            # Volt (V)
+    model_info = Column(String(255), nullable=True)
+    last_polled = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=now_wib)
+
+    interfaces = relationship("DeviceInterface", back_populates="device", cascade="all, delete-orphan", lazy="joined")
+
+class DeviceInterface(Base):
+    __tablename__ = "device_interfaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("network_devices.id", ondelete="CASCADE"), index=True, nullable=False)
+    if_index = Column(Integer, nullable=False)
+    name = Column(String(100), nullable=False)        # ether1, sfp-sfpplus1, vlan10
+    alias = Column(String(255), nullable=True)       # Comment / deskripsi di MikroTik
+    if_type = Column(String(50), default="ethernet")  # ethernet, vlan, bridge, backbone, other
+    is_up = Column(Boolean, default=False)
+    mac_address = Column(String(50), nullable=True)
+    speed_mbps = Column(Float, nullable=True)         # Link speed (e.g. 1000 Mbps)
+    
+    # Counter bytes terakhir (64-bit HC octets)
+    rx_bytes = Column(BigInteger, default=0)
+    tx_bytes = Column(BigInteger, default=0)
+    
+    # Real-time traffic rate
+    rx_rate_mbps = Column(Float, default=0.0)         # Kecepatan download saat ini (Mbps)
+    tx_rate_mbps = Column(Float, default=0.0)         # Kecepatan upload saat ini (Mbps)
+    total_rx_gb = Column(Float, default=0.0)
+    total_tx_gb = Column(Float, default=0.0)
+    last_updated = Column(DateTime, nullable=True)
+
+    device = relationship("NetworkDevice", back_populates="interfaces")
 
 import hashlib
 import secrets

@@ -15,12 +15,14 @@ from sqlalchemy import desc
 from app.database import (
     init_db, get_db, SessionLocal,
     AccessPoint, RebootSchedule, RebootLog, AppSetting, User,
+    NetworkDevice, DeviceInterface,
     get_setting, set_setting, hash_password, verify_password
 )
 from app.seed import seed_initial_aps
 from app.scheduler import setup_scheduler, reload_scheduler_jobs, execute_scheduled_reboot
 from app.ssh_worker import execute_ssh_reboot, reboot_aps_batch
 from app.monitor import run_monitor_cycle
+from app.snmp_service import poll_single_device, test_snmp_connection, run_nms_poll_cycle
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,8 +30,9 @@ async def lifespan(app: FastAPI):
     init_db()
     seed_initial_aps()
     setup_scheduler()
-    # Trigger 1x scan status di awal
+    # Trigger 1x scan status & SNMP poll di awal
     asyncio.create_task(asyncio.to_thread(run_monitor_cycle))
+    asyncio.create_task(asyncio.to_thread(run_nms_poll_cycle))
     yield
     # Shutdown
 
@@ -100,6 +103,31 @@ class UserEditSchema(BaseModel):
 class UserChangePasswordSchema(BaseModel):
     password: str
 
+class DeviceCreateSchema(BaseModel):
+    name: str
+    ip: str
+    device_type: Optional[str] = "mikrotik"
+    snmp_version: Optional[str] = "2c"
+    snmp_community: Optional[str] = "public"
+    snmp_port: Optional[int] = 161
+    site: Optional[str] = "Fasilkom"
+
+class DeviceEditSchema(BaseModel):
+    name: str
+    ip: str
+    device_type: Optional[str] = "mikrotik"
+    snmp_version: Optional[str] = "2c"
+    snmp_community: Optional[str] = "public"
+    snmp_port: Optional[int] = 161
+    site: Optional[str] = "Fasilkom"
+    is_active: Optional[bool] = True
+
+class SNMPTestSchema(BaseModel):
+    ip: str
+    snmp_community: Optional[str] = "public"
+    snmp_port: Optional[int] = 161
+    snmp_version: Optional[str] = "2c"
+
 # ==================== AUTH & RBAC HELPERS ====================
 
 def get_current_user_from_request(request: Request, db: Session) -> Optional[User]:
@@ -116,6 +144,14 @@ def filter_aps_by_user(query, user: User):
     if not allowed:
         return query.filter(False)
     return query.filter(AccessPoint.site.in_(allowed))
+
+def filter_devices_by_user(query, user: User):
+    if not user or user.role == "superadmin" or user.allowed_sites == "*":
+        return query
+    allowed = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
+    if not allowed:
+        return query.filter(False)
+    return query.filter(NetworkDevice.site.in_(allowed))
 
 def user_can_access_site(user: User, site_name: str, db: Optional[Session] = None) -> bool:
     if not user or user.role == "superadmin" or user.allowed_sites == "*":
@@ -439,6 +475,85 @@ async def page_logs(request: Request, db: Session = Depends(get_db)):
             "active_page": "logs",
             "current_user": user,
             "logs": logs
+        }
+    )
+
+@app.get("/nms", response_class=HTMLResponse)
+async def page_nms(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    base_query = db.query(NetworkDevice).order_by(NetworkDevice.site, NetworkDevice.name)
+    dev_query = filter_devices_by_user(base_query, user)
+    devices = dev_query.all()
+
+    # Sites list
+    all_aps = filter_aps_by_user(db.query(AccessPoint), user).all()
+    existing_sites = [ap.site for ap in all_aps if ap.site] + [d.site for d in devices if d.site]
+    if user.role == "superadmin" or user.allowed_sites == "*":
+        sites = sorted(list(set(existing_sites)))
+        if not sites:
+            sites = ["Fasilkom"]
+    else:
+        user_sites = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
+        sites = sorted(list(set(existing_sites) | set(user_sites)))
+        if not sites:
+            sites = [f"Site {user.username}"]
+
+    total_devices = len(devices)
+    online_devices = sum(1 for d in devices if d.is_online)
+    offline_devices = total_devices - online_devices
+    hot_devices = sum(1 for d in devices if d.temperature and d.temperature >= 55.0)
+
+    devices_data = []
+    total_network_traffic_mbps = 0.0
+
+    for d in devices:
+        total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in d.interfaces)
+        total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in d.interfaces)
+        total_network_traffic_mbps += (total_rx + total_tx)
+
+        devices_data.append({
+            "id": d.id,
+            "name": d.name,
+            "ip": d.ip,
+            "device_type": d.device_type,
+            "snmp_version": d.snmp_version,
+            "snmp_community": d.snmp_community,
+            "snmp_port": d.snmp_port,
+            "site": d.site,
+            "is_active": d.is_active,
+            "is_online": d.is_online,
+            "uptime": d.uptime or "-",
+            "cpu_usage": d.cpu_usage,
+            "memory_usage": d.memory_usage,
+            "memory_total_mb": d.memory_total_mb,
+            "memory_used_mb": d.memory_used_mb,
+            "temperature": d.temperature,
+            "voltage": d.voltage,
+            "model_info": d.model_info or "Belum dipoll",
+            "interface_count": len(d.interfaces),
+            "total_rx_mbps": round(total_rx, 2),
+            "total_tx_mbps": round(total_tx, 2),
+            "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "Belum ada"
+        })
+
+    return templates.TemplateResponse(
+        request=request,
+        name="nms.html",
+        context={
+            "active_page": "nms",
+            "current_user": user,
+            "devices": devices_data,
+            "sites": sites,
+            "stats": {
+                "total_devices": total_devices,
+                "online_devices": online_devices,
+                "offline_devices": offline_devices,
+                "hot_devices": hot_devices,
+                "total_traffic_mbps": round(total_network_traffic_mbps, 2)
+            }
         }
     )
 
@@ -962,3 +1077,188 @@ async def api_save_settings(request: Request, db: Session = Depends(get_db)):
             pass
 
     return {"status": "success", "message": "Pengaturan berhasil disimpan"}
+
+# ==================== API: NMS (NETWORK MONITORING SYSTEM) ====================
+
+@app.post("/api/nms/test")
+async def api_test_snmp(payload: SNMPTestSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    res = await test_snmp_connection(
+        ip=payload.ip.strip(),
+        community=payload.snmp_community.strip() if payload.snmp_community else "public",
+        port=payload.snmp_port or 161,
+        version=payload.snmp_version or "2c"
+    )
+    return res
+
+@app.post("/api/nms/devices")
+async def api_add_device(payload: DeviceCreateSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    site_clean = (payload.site or "Default").strip()
+    if not user_can_access_site(user, site_clean, db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki akses ke site '{site_clean}'"})
+    
+    ip_clean = payload.ip.strip()
+    existing = db.query(NetworkDevice).filter(NetworkDevice.ip == ip_clean).first()
+    if existing:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Perangkat dengan IP {ip_clean} sudah terdaftar"})
+    
+    dev = NetworkDevice(
+        name=payload.name.strip(),
+        ip=ip_clean,
+        device_type=payload.device_type or "mikrotik",
+        snmp_version=payload.snmp_version or "2c",
+        snmp_community=(payload.snmp_community or "public").strip(),
+        snmp_port=payload.snmp_port or 161,
+        site=site_clean,
+        is_active=True
+    )
+    db.add(dev)
+    db.commit()
+    db.refresh(dev)
+    
+    # Trigger poll in background immediately
+    asyncio.create_task(poll_single_device(dev.id))
+    
+    return {"status": "success", "message": f"Perangkat '{dev.name}' berhasil ditambahkan dan sedang dipoll", "device_id": dev.id}
+
+@app.put("/api/nms/devices/{device_id}")
+async def api_edit_device(device_id: int, payload: DeviceEditSchema, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    dev = db.query(NetworkDevice).filter(NetworkDevice.id == device_id).first()
+    if not dev:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Perangkat tidak ditemukan"})
+    
+    if not user_can_access_site(user, dev.site):
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Anda tidak memiliki izin mengedit perangkat ini"})
+    
+    new_site = (payload.site or dev.site).strip()
+    if not user_can_access_site(user, new_site, db):
+        return JSONResponse(status_code=403, content={"status": "error", "message": f"Anda tidak memiliki akses ke site '{new_site}'"})
+    
+    dev.name = payload.name.strip()
+    dev.ip = payload.ip.strip()
+    dev.device_type = payload.device_type or "mikrotik"
+    dev.snmp_version = payload.snmp_version or "2c"
+    dev.snmp_community = (payload.snmp_community or "public").strip()
+    dev.snmp_port = payload.snmp_port or 161
+    dev.site = new_site
+    if payload.is_active is not None:
+        dev.is_active = payload.is_active
+    
+    db.commit()
+    
+    if dev.is_active:
+        asyncio.create_task(poll_single_device(dev.id))
+        
+    return {"status": "success", "message": f"Perangkat '{dev.name}' berhasil diperbarui"}
+
+@app.delete("/api/nms/devices/{device_id}")
+async def api_delete_device(device_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    dev = db.query(NetworkDevice).filter(NetworkDevice.id == device_id).first()
+    if not dev:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Perangkat tidak ditemukan"})
+    
+    if not user_can_access_site(user, dev.site):
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Anda tidak memiliki izin menghapus perangkat ini"})
+    
+    # Hapus child interfaces
+    db.query(DeviceInterface).filter(DeviceInterface.device_id == dev.id).delete()
+    dev_name = dev.name
+    db.delete(dev)
+    db.commit()
+    
+    return {"status": "success", "message": f"Perangkat '{dev_name}' berhasil dihapus"}
+
+@app.post("/api/nms/devices/{device_id}/poll")
+async def api_poll_device_manual(device_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    dev = db.query(NetworkDevice).filter(NetworkDevice.id == device_id).first()
+    if not dev:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Perangkat tidak ditemukan"})
+    
+    if not user_can_access_site(user, dev.site):
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak"})
+    
+    ok = await poll_single_device(device_id)
+    if not ok:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Gagal menghubungi SNMP perangkat. Periksa koneksi atau IP/Community."})
+    
+    return {"status": "success", "message": f"Berhasil memperbarui data {dev.name}"}
+
+@app.post("/api/nms/poll-all")
+async def api_poll_all_devices(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    asyncio.create_task(asyncio.to_thread(run_nms_poll_cycle))
+    return {"status": "success", "message": "Polling seluruh perangkat SNMP sedang berjalan di background"}
+
+@app.get("/api/nms/devices/{device_id}/interfaces")
+async def api_get_device_interfaces(device_id: int, request: Request, db: Session = Depends(get_db)):
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    dev = db.query(NetworkDevice).filter(NetworkDevice.id == device_id).first()
+    if not dev:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Perangkat tidak ditemukan"})
+    
+    if not user_can_access_site(user, dev.site):
+        return JSONResponse(status_code=403, content={"status": "error", "message": "Akses ditolak"})
+    
+    ifaces = db.query(DeviceInterface).filter(DeviceInterface.device_id == dev.id).all()
+    
+    data = []
+    for iface in ifaces:
+        rx_mbps = round(iface.rx_rate_mbps or 0.0, 2)
+        tx_mbps = round(iface.tx_rate_mbps or 0.0, 2)
+        data.append({
+            "id": iface.id,
+            "if_index": iface.if_index,
+            "name": iface.name,
+            "alias": iface.alias or "",
+            "if_type": iface.if_type or "other",
+            "is_up": iface.is_up,
+            "rx_rate_mbps": rx_mbps,
+            "tx_rate_mbps": tx_mbps,
+            "total_rate_mbps": round(rx_mbps + tx_mbps, 2),
+            "total_rx_gb": round(iface.total_rx_gb or 0.0, 2),
+            "total_tx_gb": round(iface.total_tx_gb or 0.0, 2),
+            "last_updated": iface.last_updated.strftime("%d/%m/%Y %H:%M:%S") if iface.last_updated else "-"
+        })
+    
+    return {
+        "status": "success",
+        "device": {
+            "id": dev.id,
+            "name": dev.name,
+            "ip": dev.ip,
+            "device_type": dev.device_type,
+            "uptime": dev.uptime or "-",
+            "cpu_usage": dev.cpu_usage,
+            "memory_usage": dev.memory_usage,
+            "memory_total_mb": dev.memory_total_mb,
+            "memory_used_mb": dev.memory_used_mb,
+            "temperature": dev.temperature,
+            "voltage": dev.voltage,
+            "last_polled": dev.last_polled.strftime("%d/%m/%Y %H:%M:%S") if dev.last_polled else "-"
+        },
+        "interfaces": data
+    }

@@ -1,10 +1,11 @@
 FROM python:3.11-slim
 
-# Install system dependencies (ping ICMP, openssh-client, sshpass, tzdata)
+# Install system dependencies (ping ICMP, openssh-client, sshpass, snmp, tzdata)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     iputils-ping \
     openssh-client \
     sshpass \
+    snmp \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 

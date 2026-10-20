@@ -1,0 +1,1105 @@
+{% extends "base.html" %}
+
+{% block title %}Network Monitoring System (SNMP) - OTO REBOOT{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start align-items-md-center flex-column flex-md-row gap-3 mb-4">
+    <div>
+        <h2 class="fw-extrabold mb-1 tracking-tight" style="font-weight: 800; letter-spacing: -0.03em;">
+            Network Monitoring System (SNMP)
+        </h2>
+        <p class="text-secondary mb-0 small">
+            Monitoring performa real-time <b>MikroTik</b> & <b>Access Point</b>: Traffic Interface, VLAN, Backbone, Suhu, CPU, dan Memory.
+        </p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button class="btn btn-modern-outline" onclick="pollAllDevices()">
+            <i class="bi bi-arrow-repeat"></i> Poll Semua Sekarang
+        </button>
+        <button class="btn btn-modern-primary" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+            <i class="bi bi-plus-lg"></i> Tambah Perangkat SNMP
+        </button>
+    </div>
+</div>
+
+<!-- STAT CARDS -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="glass-card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-secondary small fw-medium">Total Perangkat</div>
+                    <div class="fs-3 fw-bold text-light mt-1 font-mono">{{ stats.total_devices }}</div>
+                </div>
+                <div class="p-2 rounded-3" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                    <i class="bi bi-hdd-network fs-4"></i>
+                </div>
+            </div>
+            <div class="mt-2 text-secondary small d-flex align-items-center gap-1">
+                <span class="text-success"><i class="bi bi-check-circle-fill"></i> {{ stats.online_devices }} Online</span>
+                <span>•</span>
+                <span class="text-danger">{{ stats.offline_devices }} Offline</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+        <div class="glass-card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-secondary small fw-medium">Status Online</div>
+                    <div class="fs-3 fw-bold text-success mt-1 font-mono">
+                        {% if stats.total_devices > 0 %}
+                            {{ ((stats.online_devices / stats.total_devices) * 100)|round(1) }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="p-2 rounded-3" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">
+                    <i class="bi bi-broadcast-pin fs-4"></i>
+                </div>
+            </div>
+            <div class="mt-2 text-secondary small">
+                Respon SNMP v2c aktif
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+        <div class="glass-card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-secondary small fw-medium">Suhu Waspada (>55°C)</div>
+                    <div class="fs-3 fw-bold {% if stats.hot_devices > 0 %}text-warning{% else %}text-light{% endif %} mt-1 font-mono">
+                        {{ stats.hot_devices }}
+                    </div>
+                </div>
+                <div class="p-2 rounded-3" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                    <i class="bi bi-thermometer-high fs-4"></i>
+                </div>
+            </div>
+            <div class="mt-2 text-secondary small">
+                Perangkat butuh pendinginan
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-lg-3">
+        <div class="glass-card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-secondary small fw-medium">Total Traffic Fleet</div>
+                    <div class="fs-3 fw-bold text-info mt-1 font-mono">
+                        {{ stats.total_traffic_mbps }} <span class="fs-6 fw-normal text-secondary">Mbps</span>
+                    </div>
+                </div>
+                <div class="p-2 rounded-3" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee;">
+                    <i class="bi bi-activity fs-4"></i>
+                </div>
+            </div>
+            <div class="mt-2 text-secondary small">
+                Akumulasi Rx + Tx Real-time
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SITE TAB NAVIGATION -->
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap" id="siteTabs">
+        <button class="btn btn-sm btn-modern-primary site-tab-btn active" data-site="" onclick="selectSiteTab('', this)">
+            <i class="bi bi-buildings me-1"></i> Semua Site 
+            <span class="badge bg-light bg-opacity-20 ms-1 font-mono">{{ devices|length }}</span>
+        </button>
+
+        {% for s in sites %}
+            <button class="btn btn-sm btn-modern-outline site-tab-btn" data-site="{{ s }}" onclick="selectSiteTab('{{ s }}', this)">
+                <i class="bi bi-building me-1 text-info"></i> {{ s }}
+            </button>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="glass-card p-3 mb-4">
+    <div class="row g-2 align-items-center">
+        <div class="col-12 col-md-4">
+            <div class="input-group">
+                <span class="input-group-text bg-transparent border-end-0 border-secondary border-opacity-25 text-secondary">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" id="searchInput" class="form-control border-start-0" placeholder="Cari nama perangkat atau IP..." onkeyup="filterTable()">
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <select id="typeFilter" class="form-select" onchange="filterTable()">
+                <option value="">Semua Tipe Perangkat</option>
+                <option value="mikrotik">MikroTik Router</option>
+                <option value="access_point">Access Point</option>
+                <option value="switch">Switch / Lainnya</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <select id="statusFilter" class="form-select" onchange="filterTable()">
+                <option value="">Semua Status</option>
+                <option value="ONLINE">ONLINE</option>
+                <option value="OFFLINE">OFFLINE</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-2 text-md-end text-secondary small">
+            Menampilkan: <b id="countText" class="text-light font-mono">{{ devices|length }}</b> Perangkat
+        </div>
+    </div>
+</div>
+
+<!-- DEVICE TABLE -->
+<div class="glass-card">
+    <div class="table-responsive">
+        <table class="table align-middle" id="deviceTable">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Perangkat</th>
+                    <th>IP & SNMP</th>
+                    <th>Site</th>
+                    <th style="min-width: 140px;">CPU Load</th>
+                    <th style="min-width: 140px;">Memory</th>
+                    <th>Suhu / Volt</th>
+                    <th>Traffic Real-Time</th>
+                    <th>Uptime</th>
+                    <th class="text-end pe-4">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if devices %}
+                    {% for d in devices %}
+                    <tr data-name="{{ d.name|lower }}" 
+                        data-ip="{{ d.ip }}" 
+                        data-type="{{ d.device_type }}" 
+                        data-site="{{ d.site or 'Fasilkom' }}" 
+                        data-status="{% if d.is_online %}ONLINE{% else %}OFFLINE{% endif %}">
+                        <td>
+                            {% if d.is_online %}
+                                <span class="status-pill online">
+                                    <span class="pulse-dot online"></span> ONLINE
+                                </span>
+                            {% else %}
+                                <span class="status-pill offline">
+                                    <span class="pulse-dot offline"></span> OFFLINE
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="p-2 rounded-2" style="background: rgba(255, 255, 255, 0.04); color: #cbd5e1;">
+                                    {% if d.device_type == 'mikrotik' %}
+                                        <i class="bi bi-hdd-network text-info fs-5"></i>
+                                    {% elif d.device_type == 'access_point' %}
+                                        <i class="bi bi-router text-warning fs-5"></i>
+                                    {% else %}
+                                        <i class="bi bi-ethernet text-primary fs-5"></i>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <div class="fw-bold text-light">{{ d.name }}</div>
+                                    <div class="text-secondary small font-mono" style="font-size: 0.72rem;">{{ d.model_info[:35] }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="font-mono text-light fw-medium">{{ d.ip }}</div>
+                            <div class="text-secondary" style="font-size: 0.72rem;">SNMP: v{{ d.snmp_version }} ({{ d.snmp_port }})</div>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); color: #e2e8f0;">
+                                <i class="bi bi-geo-alt me-1 text-secondary"></i>{{ d.site }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if d.cpu_usage is not none %}
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span class="text-secondary">Load:</span>
+                                    <span class="font-mono fw-bold {% if d.cpu_usage > 80 %}text-danger{% elif d.cpu_usage > 50 %}text-warning{% else %}text-success{% endif %}">
+                                        {{ d.cpu_usage }}%
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px;">
+                                    <div class="progress-bar {% if d.cpu_usage > 80 %}bg-danger{% elif d.cpu_usage > 50 %}bg-warning{% else %}bg-success{% endif %}" 
+                                         role="progressbar" style="width: {{ d.cpu_usage }}%;"></div>
+                                </div>
+                            {% else %}
+                                <span class="text-secondary small">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if d.memory_usage is not none %}
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span class="text-secondary">{{ d.memory_used_mb or 0 }}MB</span>
+                                    <span class="font-mono fw-bold {% if d.memory_usage > 85 %}text-danger{% elif d.memory_usage > 65 %}text-warning{% else %}text-info{% endif %}">
+                                        {{ d.memory_usage }}%
+                                    </span>
+                                </div>
+                                <div class="progress" style="height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px;">
+                                    <div class="progress-bar {% if d.memory_usage > 85 %}bg-danger{% elif d.memory_usage > 65 %}bg-warning{% else %}bg-info{% endif %}" 
+                                         role="progressbar" style="width: {{ d.memory_usage }}%;"></div>
+                                </div>
+                            {% else %}
+                                <span class="text-secondary small">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex flex-column gap-1">
+                                {% if d.temperature is not none %}
+                                    <span class="badge font-mono" style="background: {% if d.temperature >= 65 %}rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);{% elif d.temperature >= 55 %}rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);{% else %}rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);{% endif %}">
+                                        <i class="bi bi-thermometer-half me-1"></i>{{ d.temperature }} °C
+                                    </span>
+                                {% else %}
+                                    <span class="text-secondary small">Suhu: N/A</span>
+                                {% endif %}
+
+                                {% if d.voltage is not none %}
+                                    <span class="text-secondary font-mono" style="font-size: 0.72rem;">
+                                        <i class="bi bi-lightning-charge me-1 text-warning"></i>{{ d.voltage }} V
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex flex-column gap-1">
+                                <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.25);">
+                                    <i class="bi bi-arrow-down-short text-info"></i> {{ d.total_rx_mbps }} Mbps
+                                </span>
+                                <span class="badge font-mono" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.25);">
+                                    <i class="bi bi-arrow-up-short text-primary"></i> {{ d.total_tx_mbps }} Mbps
+                                </span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="font-mono text-light small">{{ d.uptime }}</div>
+                            <div class="text-secondary" style="font-size: 0.7rem;">Update: {{ d.last_polled }}</div>
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <button class="btn btn-sm btn-modern-primary" title="Detail Traffic & Interface" onclick="openInterfacesModal({{ d.id }}, '{{ d.name }}')">
+                                    <i class="bi bi-bar-chart-line"></i> Traffic
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline" title="Poll Sekarang" onclick="pollSingleDevice({{ d.id }}, this)">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline" title="Edit Perangkat" onclick='openEditModal({{ d|tojson }})'>
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-modern-outline text-danger border-danger border-opacity-25" title="Hapus" onclick="deleteDevice({{ d.id }}, '{{ d.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-secondary">
+                            <i class="bi bi-hdd-network fs-1 d-block mb-2 opacity-50"></i>
+                            <div>Belum ada perangkat SNMP yang ditambahkan.</div>
+                            <div class="small mt-1">Klik tombol <b>Tambah Perangkat SNMP</b> di atas untuk mulai memonitor MikroTik atau AP.</div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL: DETAIL INTERFACES & TRAFFIC WITH REALTIME SORT -->
+<div class="modal fade" id="interfacesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="modal-title fw-bold text-light d-flex align-items-center gap-2">
+                        <i class="bi bi-activity text-info"></i> 
+                        <span>Traffic & Interface: <span id="modalDeviceName" class="text-info"></span></span>
+                    </h5>
+                    <div id="modalDeviceSummary" class="text-secondary small mt-1">Memuat metrik...</div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-4">
+                <!-- SORT & FILTER CONTROLS -->
+                <div class="glass-card p-3 mb-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <!-- Type Filter Buttons -->
+                        <div class="d-flex align-items-center gap-1 flex-wrap" id="ifaceTypeButtons">
+                            <button class="btn btn-xs btn-sm btn-modern-primary iface-type-btn active" data-type="" onclick="filterIfaceType('', this)">
+                                Semua (<span id="countIfaceAll" class="font-mono">0</span>)
+                            </button>
+                            <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn" data-type="ethernet" onclick="filterIfaceType('ethernet', this)">
+                                <i class="bi bi-ethernet me-1 text-info"></i> Physical / SFP (<span id="countIfaceEth" class="font-mono">0</span>)
+                            </button>
+                            <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn" data-type="vlan" onclick="filterIfaceType('vlan', this)">
+                                <i class="bi bi-diagram-3 me-1 text-warning"></i> VLAN (<span id="countIfaceVlan" class="font-mono">0</span>)
+                            </button>
+                            <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn" data-type="backbone" onclick="filterIfaceType('backbone', this)">
+                                <i class="bi bi-arrow-left-right me-1 text-success"></i> Backbone / Tunnel (<span id="countIfaceBb" class="font-mono">0</span>)
+                            </button>
+                            <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn" data-type="bridge" onclick="filterIfaceType('bridge', this)">
+                                <i class="bi bi-boxes me-1 text-primary"></i> Bridge
+                            </button>
+                            <button class="btn btn-xs btn-sm btn-modern-outline iface-type-btn" data-type="wireless" onclick="filterIfaceType('wireless', this)">
+                                <i class="bi bi-wifi me-1 text-cyan"></i> Wireless
+                            </button>
+                        </div>
+
+                        <!-- Sorting Buttons: HIGHEST TO LOWEST -->
+                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                            <span class="text-secondary small me-1"><i class="bi bi-sort-numeric-down"></i> Urutkan:</span>
+                            <button class="btn btn-sm btn-modern-outline sort-btn" id="sortRxBtn" onclick="sortInterfaces('rx')">
+                                <i class="bi bi-arrow-down-short text-info"></i> Download Terbesar
+                            </button>
+                            <button class="btn btn-sm btn-modern-outline sort-btn" id="sortTxBtn" onclick="sortInterfaces('tx')">
+                                <i class="bi bi-arrow-up-short text-primary"></i> Upload Terbesar
+                            </button>
+                            <button class="btn btn-sm btn-modern-outline sort-btn" id="sortTotalBtn" onclick="sortInterfaces('total')">
+                                <i class="bi bi-speedometer2 text-warning"></i> Total Mbps
+                            </button>
+                            <button class="btn btn-sm btn-modern-outline sort-btn" id="sortGbBtn" onclick="sortInterfaces('volume')">
+                                <i class="bi bi-database me-1"></i> Volume GB
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-12 col-md-6">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-transparent border-end-0 border-secondary border-opacity-25 text-secondary">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input type="text" id="ifaceSearchInput" class="form-control form-control-sm border-start-0" placeholder="Cari nama interface atau komentar/alias (contoh: backbone, vlan10)..." onkeyup="renderInterfacesTable()">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6 text-md-end text-secondary small d-flex align-items-center justify-content-md-end mt-2 mt-md-0">
+                            Menampilkan: <b id="ifaceVisibleCount" class="text-light font-mono ms-1 me-1">0</b> dari <span id="ifaceTotalCount" class="font-mono">0</span> interface
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TABLE INTERFACES -->
+                <div class="table-responsive" style="max-height: 480px;">
+                    <table class="table align-middle" id="interfacesTable">
+                        <thead class="sticky-top" style="background: #0f172a; z-index: 10;">
+                            <tr>
+                                <th width="80">Status</th>
+                                <th>Interface & Komentar</th>
+                                <th>Tipe</th>
+                                <th class="text-end" style="min-width: 140px;">Download (Rx Rate)</th>
+                                <th class="text-end" style="min-width: 140px;">Upload (Tx Rate)</th>
+                                <th class="text-end" style="min-width: 140px;">Total Rate</th>
+                                <th class="text-end" style="min-width: 150px;">Akumulasi (GB)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="interfacesTableBody">
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-secondary">
+                                    <div class="spinner-border spinner-border-sm text-info me-2"></div> Memuat data interfaces...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-footer d-flex justify-content-between">
+                <div class="text-secondary small">
+                    <i class="bi bi-info-circle me-1"></i> Rate dihitung berdasarkan selisih byte ($\Delta \text{bytes} \times 8 / \Delta t$) antar polling SNMP.
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-modern-outline" id="btnRefreshModalIface" onclick="refreshCurrentInterfaces()">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh Data
+                    </button>
+                    <button type="button" class="btn btn-modern-primary" data-bs-dismiss="modal">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: TAMBAH PERANGKAT -->
+<div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-light">
+                    <i class="bi bi-plus-circle text-primary me-2"></i>Tambah Perangkat SNMP
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addDeviceForm" onsubmit="submitAddDevice(event)">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small text-secondary">Nama Perangkat *</label>
+                        <input type="text" class="form-control" id="addName" placeholder="Contoh: CCR-Main-Router / Core-Switch-Fas" required>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-8">
+                            <label class="form-label small text-secondary">IP Address *</label>
+                            <input type="text" class="form-control font-mono" id="addIp" placeholder="192.168.1.1" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small text-secondary">Port</label>
+                            <input type="number" class="form-control font-mono" id="addPort" value="161">
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">Tipe Perangkat</label>
+                            <select class="form-select" id="addType">
+                                <option value="mikrotik" selected>MikroTik Router</option>
+                                <option value="access_point">Access Point</option>
+                                <option value="switch">Switch / Lainnya</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">Site / Fakultas *</label>
+                            <input type="text" class="form-control" id="addSite" list="siteSuggestions" value="{% if sites %}{{ sites[0] }}{% else %}Fasilkom{% endif %}" required>
+                            <datalist id="siteSuggestions">
+                                {% for s in sites %}
+                                    <option value="{{ s }}"></option>
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">SNMP Version</label>
+                            <select class="form-select font-mono" id="addVersion">
+                                <option value="2c" selected>SNMP v2c</option>
+                                <option value="1">SNMP v1</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">SNMP Community</label>
+                            <input type="text" class="form-control font-mono" id="addCommunity" value="public" placeholder="public" required>
+                        </div>
+                    </div>
+
+                    <!-- Test Connection Box -->
+                    <div class="p-3 rounded-3 mb-2" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.15);">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small text-secondary fw-semibold">Uji Koneksi SNMP:</span>
+                            <button type="button" class="btn btn-xs btn-sm btn-modern-outline" id="btnTestAdd" onclick="testSNMP('add')">
+                                <i class="bi bi-broadcast"></i> Test Koneksi
+                            </button>
+                        </div>
+                        <div id="testResultAdd" class="small text-secondary font-mono" style="font-size: 0.78rem;">
+                            Klik "Test Koneksi" untuk memastikan OID SNMP merespon dengan baik.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary" id="btnSubmitAdd">Simpan & Mulai Monitor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: EDIT PERANGKAT -->
+<div class="modal fade" id="editDeviceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold text-light">
+                    <i class="bi bi-pencil-square text-info me-2"></i>Edit Perangkat SNMP
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editDeviceForm" onsubmit="submitEditDevice(event)">
+                <input type="hidden" id="editId">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label small text-secondary">Nama Perangkat *</label>
+                        <input type="text" class="form-control" id="editName" required>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-8">
+                            <label class="form-label small text-secondary">IP Address *</label>
+                            <input type="text" class="form-control font-mono" id="editIp" required>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small text-secondary">Port</label>
+                            <input type="number" class="form-control font-mono" id="editPort" value="161">
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">Tipe Perangkat</label>
+                            <select class="form-select" id="editType">
+                                <option value="mikrotik">MikroTik Router</option>
+                                <option value="access_point">Access Point</option>
+                                <option value="switch">Switch / Lainnya</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">Site / Fakultas *</label>
+                            <input type="text" class="form-control" id="editSite" list="siteSuggestionsEdit" required>
+                            <datalist id="siteSuggestionsEdit">
+                                {% for s in sites %}
+                                    <option value="{{ s }}"></option>
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">SNMP Version</label>
+                            <select class="form-select font-mono" id="editVersion">
+                                <option value="2c">SNMP v2c</option>
+                                <option value="1">SNMP v1</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-secondary">SNMP Community</label>
+                            <input type="text" class="form-control font-mono" id="editCommunity" required>
+                        </div>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="editIsActive">
+                        <label class="form-check-label small text-light" for="editIsActive">Aktifkan Polling SNMP Otomatis</label>
+                    </div>
+
+                    <!-- Test Connection Box -->
+                    <div class="p-3 rounded-3 mb-2" style="background: rgba(255, 255, 255, 0.03); border: 1px dashed rgba(255, 255, 255, 0.15);">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small text-secondary fw-semibold">Uji Koneksi SNMP:</span>
+                            <button type="button" class="btn btn-xs btn-sm btn-modern-outline" id="btnTestEdit" onclick="testSNMP('edit')">
+                                <i class="bi bi-broadcast"></i> Test Koneksi
+                            </button>
+                        </div>
+                        <div id="testResultEdit" class="small text-secondary font-mono" style="font-size: 0.78rem;">
+                            Periksa respon perangkat dengan tombol di atas.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-modern-outline" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-modern-primary" id="btnSubmitEdit">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentSelectedSite = "";
+let currentActiveDeviceId = null;
+let currentInterfacesData = [];
+let currentSortField = "rx"; // rx, tx, total, volume, name
+let currentSortOrder = "desc";
+let currentIfaceTypeFilter = "";
+
+// Site Tab Filtering
+function selectSiteTab(site, btn) {
+    currentSelectedSite = site;
+    document.querySelectorAll('.site-tab-btn').forEach(b => {
+        b.classList.remove('btn-modern-primary', 'active');
+        b.classList.add('btn-modern-outline');
+    });
+    btn.classList.remove('btn-modern-outline');
+    btn.classList.add('btn-modern-primary', 'active');
+    filterTable();
+}
+
+// Device Table Filter
+function filterTable() {
+    const search = (document.getElementById('searchInput').value || "").toLowerCase();
+    const typeFilter = document.getElementById('typeFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+
+    const rows = document.querySelectorAll('#deviceTable tbody tr');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        if (!row.dataset.name) return; // skip empty state row
+
+        const name = row.dataset.name || "";
+        const ip = row.dataset.ip || "";
+        const type = row.dataset.type || "";
+        const site = row.dataset.site || "";
+        const status = row.dataset.status || "";
+
+        const matchSearch = name.includes(search) || ip.includes(search);
+        const matchType = !typeFilter || type === typeFilter;
+        const matchStatus = !statusFilter || status === statusFilter;
+        const matchSite = !currentSelectedSite || site.toLowerCase() === currentSelectedSite.toLowerCase();
+
+        if (matchSearch && matchType && matchStatus && matchSite) {
+            row.style.display = "";
+            visibleCount++;
+        } else {
+            row.style.display = "none";
+        }
+    });
+
+    document.getElementById('countText').innerText = visibleCount;
+}
+
+// SNMP Test Function
+async function testSNMP(target) {
+    const isAdd = target === 'add';
+    const ip = document.getElementById(isAdd ? 'addIp' : 'editIp').value.trim();
+    const community = document.getElementById(isAdd ? 'addCommunity' : 'editCommunity').value.trim();
+    const port = parseInt(document.getElementById(isAdd ? 'addPort' : 'editPort').value) || 161;
+    const version = document.getElementById(isAdd ? 'addVersion' : 'editVersion').value;
+    const resultBox = document.getElementById(isAdd ? 'testResultAdd' : 'testResultEdit');
+    const btnTest = document.getElementById(isAdd ? 'btnTestAdd' : 'btnTestEdit');
+
+    if (!ip) {
+        Swal.fire({ icon: 'warning', title: 'Perhatian', text: 'Masukkan IP Address terlebih dahulu' });
+        return;
+    }
+
+    btnTest.disabled = true;
+    btnTest.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Menguji...`;
+    resultBox.innerHTML = `<span class="text-info"><i class="bi bi-hourglass-split"></i> Menghubungi target ${ip}:${port}...</span>`;
+
+    try {
+        const res = await fetch('/api/nms/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip, snmp_community: community, snmp_port: port, snmp_version: version })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            resultBox.innerHTML = `
+                <div class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> ${data.message}</div>
+                <div class="text-secondary mt-1">SysName: <b class="text-light">${data.device_name || '-'}</b> | Uptime: <b class="text-light">${data.uptime || '-'}</b></div>
+                <div class="text-secondary" style="font-size: 0.72rem;">Model: ${data.model_info || '-'}</div>
+            `;
+            // Auto fill device name if empty
+            if (isAdd && !document.getElementById('addName').value && data.device_name) {
+                document.getElementById('addName').value = data.device_name;
+            }
+        } else {
+            resultBox.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> ${data.message}</div>`;
+        }
+    } catch (e) {
+        resultBox.innerHTML = `<div class="text-danger"><i class="bi bi-x-circle-fill me-1"></i> Gagal melakukan test: ${e.message}</div>`;
+    } finally {
+        btnTest.disabled = false;
+        btnTest.innerHTML = `<i class="bi bi-broadcast"></i> Test Koneksi`;
+    }
+}
+
+// Add Device Submit
+async function submitAddDevice(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitAdd');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Menyimpan...`;
+
+    const payload = {
+        name: document.getElementById('addName').value.trim(),
+        ip: document.getElementById('addIp').value.trim(),
+        device_type: document.getElementById('addType').value,
+        snmp_version: document.getElementById('addVersion').value,
+        snmp_community: document.getElementById('addCommunity').value.trim(),
+        snmp_port: parseInt(document.getElementById('addPort').value) || 161,
+        site: document.getElementById('addSite').value.trim()
+    };
+
+    try {
+        const res = await fetch('/api/nms/devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil',
+                text: data.message,
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => window.location.reload());
+        } else {
+            Swal.fire({ icon: 'error', title: 'Gagal Menambah Perangkat', text: data.message || 'Terjadi kesalahan sistem' });
+            btn.disabled = false;
+            btn.innerHTML = `Simpan & Mulai Monitor`;
+        }
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+        btn.disabled = false;
+        btn.innerHTML = `Simpan & Mulai Monitor`;
+    }
+}
+
+// Open Edit Modal
+function openEditModal(d) {
+    document.getElementById('editId').value = d.id;
+    document.getElementById('editName').value = d.name;
+    document.getElementById('editIp').value = d.ip;
+    document.getElementById('editPort').value = d.snmp_port || 161;
+    document.getElementById('editType').value = d.device_type || 'mikrotik';
+    document.getElementById('editSite').value = d.site || 'Fasilkom';
+    document.getElementById('editVersion').value = d.snmp_version || '2c';
+    document.getElementById('editCommunity').value = d.snmp_community || 'public';
+    document.getElementById('editIsActive').checked = d.is_active !== false;
+
+    document.getElementById('testResultEdit').innerHTML = `Periksa respon perangkat dengan tombol di atas.`;
+
+    const editModal = new bootstrap.Modal(document.getElementById('editDeviceModal'));
+    editModal.show();
+}
+
+// Edit Device Submit
+async function submitEditDevice(e) {
+    e.preventDefault();
+    const id = document.getElementById('editId').value;
+    const btn = document.getElementById('btnSubmitEdit');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Menyimpan...`;
+
+    const payload = {
+        name: document.getElementById('editName').value.trim(),
+        ip: document.getElementById('editIp').value.trim(),
+        device_type: document.getElementById('editType').value,
+        snmp_version: document.getElementById('editVersion').value,
+        snmp_community: document.getElementById('editCommunity').value.trim(),
+        snmp_port: parseInt(document.getElementById('editPort').value) || 161,
+        site: document.getElementById('editSite').value.trim(),
+        is_active: document.getElementById('editIsActive').checked
+    };
+
+    try {
+        const res = await fetch(`/api/nms/devices/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil',
+                text: data.message,
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => window.location.reload());
+        } else {
+            Swal.fire({ icon: 'error', title: 'Gagal Mengubah Perangkat', text: data.message || 'Terjadi kesalahan sistem' });
+            btn.disabled = false;
+            btn.innerHTML = `Simpan Perubahan`;
+        }
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+        btn.disabled = false;
+        btn.innerHTML = `Simpan Perubahan`;
+    }
+}
+
+// Delete Device
+async function deleteDevice(id, name) {
+    const result = await Swal.fire({
+        title: 'Hapus Perangkat?',
+        text: `Apakah Anda yakin ingin menghapus '${name}' beserta seluruh histori traffic-nya?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Ya, Hapus',
+        cancelButtonText: 'Batal'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const res = await fetch(`/api/nms/devices/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+            Swal.fire({ icon: 'success', title: 'Dihapus', text: data.message, timer: 1500, showConfirmButton: false })
+                .then(() => window.location.reload());
+        } else {
+            Swal.fire({ icon: 'error', title: 'Gagal Menghapus', text: data.message });
+        }
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+    }
+}
+
+// Poll Single Device On-Demand
+async function pollSingleDevice(id, btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span>`;
+    }
+
+    try {
+        const res = await fetch(`/api/nms/devices/${id}/poll`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Polling Berhasil',
+                text: data.message,
+                timer: 1200,
+                showConfirmButton: false
+            }).then(() => window.location.reload());
+        } else {
+            Swal.fire({ icon: 'error', title: 'Polling Gagal', text: data.message });
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-arrow-clockwise"></i>`;
+            }
+        }
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="bi bi-arrow-clockwise"></i>`;
+        }
+    }
+}
+
+// Poll All Devices
+async function pollAllDevices() {
+    Swal.fire({
+        title: 'Memulai Polling...',
+        text: 'Mengirim perintah polling ke seluruh perangkat aktif di background.',
+        icon: 'info',
+        timer: 2000,
+        showConfirmButton: false
+    });
+
+    try {
+        await fetch('/api/nms/poll-all', { method: 'POST' });
+        setTimeout(() => window.location.reload(), 2500);
+    } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+    }
+}
+
+// ==================== INTERFACES & TRAFFIC DETAIL MODAL ====================
+
+async function openInterfacesModal(deviceId, deviceName) {
+    currentActiveDeviceId = deviceId;
+    document.getElementById('modalDeviceName').innerText = deviceName;
+    document.getElementById('modalDeviceSummary').innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Mengambil data interface...`;
+    
+    const ifaceModal = new bootstrap.Modal(document.getElementById('interfacesModal'));
+    ifaceModal.show();
+
+    await loadDeviceInterfaces(deviceId);
+}
+
+async function refreshCurrentInterfaces() {
+    if (!currentActiveDeviceId) return;
+    const btn = document.getElementById('btnRefreshModalIface');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Memperbarui...`;
+    
+    // Poll on-demand first
+    await fetch(`/api/nms/devices/${currentActiveDeviceId}/poll`, { method: 'POST' });
+    await loadDeviceInterfaces(currentActiveDeviceId);
+    
+    btn.disabled = false;
+    btn.innerHTML = `<i class="bi bi-arrow-clockwise"></i> Refresh Data`;
+}
+
+async function loadDeviceInterfaces(deviceId) {
+    const tableBody = document.getElementById('interfacesTableBody');
+    tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary"><div class="spinner-border spinner-border-sm text-info me-2"></div> Memuat data interfaces...</td></tr>`;
+
+    try {
+        const res = await fetch(`/api/nms/devices/${deviceId}/interfaces`);
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+            const dev = data.device;
+            let summaryParts = [];
+            summaryParts.push(`IP: <b class="text-light font-mono">${dev.ip}</b>`);
+            summaryParts.push(`Uptime: <b class="text-light">${dev.uptime}</b>`);
+            if (dev.cpu_usage !== null && dev.cpu_usage !== undefined) {
+                summaryParts.push(`CPU: <b class="text-info">${dev.cpu_usage}%</b>`);
+            }
+            if (dev.temperature !== null && dev.temperature !== undefined) {
+                summaryParts.push(`Suhu: <b class="${dev.temperature >= 55 ? 'text-warning' : 'text-success'}">${dev.temperature}°C</b>`);
+            }
+            if (dev.voltage !== null && dev.voltage !== undefined) {
+                summaryParts.push(`Voltase: <b class="text-warning">${dev.voltage}V</b>`);
+            }
+            document.getElementById('modalDeviceSummary').innerHTML = summaryParts.join(' • ');
+
+            currentInterfacesData = data.interfaces || [];
+            
+            // Update counter badges
+            updateIfaceTypeBadges(currentInterfacesData);
+
+            // Default sort: highest download rate (Rx)
+            sortInterfaces('rx', true);
+        } else {
+            tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger"><i class="bi bi-exclamation-circle me-1"></i> ${data.message}</td></tr>`;
+        }
+    } catch (err) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger"><i class="bi bi-x-circle me-1"></i> ${err.message}</td></tr>`;
+    }
+}
+
+function updateIfaceTypeBadges(data) {
+    document.getElementById('countIfaceAll').innerText = data.length;
+    document.getElementById('countIfaceEth').innerText = data.filter(i => i.if_type === 'ethernet').length;
+    document.getElementById('countIfaceVlan').innerText = data.filter(i => i.if_type === 'vlan').length;
+    document.getElementById('countIfaceBb').innerText = data.filter(i => i.if_type === 'backbone').length;
+}
+
+function filterIfaceType(type, btn) {
+    currentIfaceTypeFilter = type;
+    document.querySelectorAll('.iface-type-btn').forEach(b => {
+        b.classList.remove('btn-modern-primary', 'active');
+        b.classList.add('btn-modern-outline');
+    });
+    btn.classList.remove('btn-modern-outline');
+    btn.classList.add('btn-modern-primary', 'active');
+    renderInterfacesTable();
+}
+
+function sortInterfaces(field, forceDesc = false) {
+    if (currentSortField === field && !forceDesc) {
+        currentSortOrder = currentSortOrder === 'desc' ? 'asc' : 'desc';
+    } else {
+        currentSortField = field;
+        currentSortOrder = 'desc';
+    }
+
+    // Highlight active sort button
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('btn-modern-primary', 'active'));
+    if (field === 'rx') document.getElementById('sortRxBtn').classList.add('btn-modern-primary');
+    else if (field === 'tx') document.getElementById('sortTxBtn').classList.add('btn-modern-primary');
+    else if (field === 'total') document.getElementById('sortTotalBtn').classList.add('btn-modern-primary');
+    else if (field === 'volume') document.getElementById('sortGbBtn').classList.add('btn-modern-primary');
+
+    renderInterfacesTable();
+}
+
+function renderInterfacesTable() {
+    const search = (document.getElementById('ifaceSearchInput').value || "").toLowerCase();
+    const tableBody = document.getElementById('interfacesTableBody');
+
+    let filtered = currentInterfacesData.filter(item => {
+        const matchType = !currentIfaceTypeFilter || item.if_type === currentIfaceTypeFilter;
+        const matchSearch = item.name.toLowerCase().includes(search) || (item.alias || "").toLowerCase().includes(search);
+        return matchType && matchSearch;
+    });
+
+    // Sorting logic (Highest to Lowest)
+    filtered.sort((a, b) => {
+        let valA, valB;
+        if (currentSortField === 'rx') {
+            valA = a.rx_rate_mbps;
+            valB = b.rx_rate_mbps;
+        } else if (currentSortField === 'tx') {
+            valA = a.tx_rate_mbps;
+            valB = b.tx_rate_mbps;
+        } else if (currentSortField === 'total') {
+            valA = a.total_rate_mbps;
+            valB = b.total_rate_mbps;
+        } else if (currentSortField === 'volume') {
+            valA = a.total_rx_gb + a.total_tx_gb;
+            valB = b.total_rx_gb + b.total_tx_gb;
+        } else {
+            valA = a.name;
+            valB = b.name;
+        }
+
+        if (currentSortOrder === 'desc') {
+            return valA < valB ? 1 : (valA > valB ? -1 : 0);
+        } else {
+            return valA > valB ? 1 : (valA < valB ? -1 : 0);
+        }
+    });
+
+    document.getElementById('ifaceVisibleCount').innerText = filtered.length;
+    document.getElementById('ifaceTotalCount').innerText = currentInterfacesData.length;
+
+    if (filtered.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary">Tidak ada interface yang cocok dengan filter / pencarian.</td></tr>`;
+        return;
+    }
+
+    let rowsHtml = '';
+    filtered.forEach(iface => {
+        const isUp = iface.is_up;
+        let typeBadgeClass = 'text-secondary';
+        let typeIcon = 'bi-ethernet';
+
+        if (iface.if_type === 'vlan') {
+            typeBadgeClass = 'text-warning';
+            typeIcon = 'bi-diagram-3';
+        } else if (iface.if_type === 'backbone') {
+            typeBadgeClass = 'text-success';
+            typeIcon = 'bi-arrow-left-right';
+        } else if (iface.if_type === 'bridge') {
+            typeBadgeClass = 'text-primary';
+            typeIcon = 'bi-boxes';
+        } else if (iface.if_type === 'wireless') {
+            typeBadgeClass = 'text-info';
+            typeIcon = 'bi-wifi';
+        }
+
+        // Highlight high traffic rate
+        const rxHighlight = iface.rx_rate_mbps > 50 ? 'fw-bold text-cyan' : (iface.rx_rate_mbps > 10 ? 'text-info' : 'text-light');
+        const txHighlight = iface.tx_rate_mbps > 50 ? 'fw-bold text-magenta' : (iface.tx_rate_mbps > 10 ? 'text-primary' : 'text-light');
+
+        rowsHtml += `
+            <tr>
+                <td>
+                    ${isUp ? 
+                        `<span class="badge bg-success bg-opacity-20 text-success border border-success border-opacity-25 font-mono" style="font-size: 0.72rem;">UP</span>` : 
+                        `<span class="badge bg-danger bg-opacity-20 text-danger border border-danger border-opacity-25 font-mono" style="font-size: 0.72rem;">DOWN</span>`
+                    }
+                </td>
+                <td>
+                    <div class="fw-bold font-mono text-light">${iface.name}</div>
+                    ${iface.alias ? `<div class="text-secondary small mt-0.5"><i class="bi bi-chat-left-dots me-1 text-info"></i>${iface.alias}</div>` : ''}
+                </td>
+                <td>
+                    <span class="small ${typeBadgeClass}">
+                        <i class="bi ${typeIcon} me-1"></i>${iface.if_type.toUpperCase()}
+                    </span>
+                </td>
+                <td class="text-end font-mono ${rxHighlight}">
+                    <i class="bi bi-arrow-down-short text-info"></i> ${iface.rx_rate_mbps.toFixed(2)} <span class="text-secondary small">Mbps</span>
+                </td>
+                <td class="text-end font-mono ${txHighlight}">
+                    <i class="bi bi-arrow-up-short text-primary"></i> ${iface.tx_rate_mbps.toFixed(2)} <span class="text-secondary small">Mbps</span>
+                </td>
+                <td class="text-end font-mono fw-bold text-light">
+                    ${iface.total_rate_mbps.toFixed(2)} <span class="text-secondary small font-normal">Mbps</span>
+                </td>
+                <td class="text-end font-mono text-secondary small">
+                    <span class="text-info">Rx: ${iface.total_rx_gb}G</span> | <span class="text-primary">Tx: ${iface.total_tx_gb}G</span>
+                </td>
+            </tr>
+        `;
+    });
+
+    tableBody.innerHTML = rowsHtml;
+}
+</script>
+{% endblock %}

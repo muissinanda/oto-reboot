@@ -5,6 +5,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.database import SessionLocal, RebootSchedule, AccessPoint, get_setting, now_wib
 from app.ssh_worker import reboot_aps_batch
 from app.monitor import run_monitor_cycle
+from app.snmp_service import run_nms_poll_cycle
 
 scheduler = AsyncIOScheduler()
 
@@ -124,4 +125,14 @@ def setup_scheduler():
 
         # Job 2: Muat jadwal reboot
         reload_scheduler_jobs()
+
+        # Job 3: NMS SNMP Traffic & Health Monitor (setiap 60 detik)
+        scheduler.add_job(
+            run_nms_poll_cycle,
+            trigger=IntervalTrigger(seconds=60),
+            id="nms_snmp_monitor_job",
+            name="SNMP Traffic & Health Poller",
+            replace_existing=True
+        )
+
         scheduler.start()
