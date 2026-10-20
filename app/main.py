@@ -1241,6 +1241,18 @@ async def api_get_device_interfaces(device_id: int, request: Request, db: Sessio
             "total_rate_mbps": round(rx_mbps + tx_mbps, 2),
             "total_rx_gb": round(iface.total_rx_gb or 0.0, 2),
             "total_tx_gb": round(iface.total_tx_gb or 0.0, 2),
+            "is_sfp": bool(iface.is_sfp),
+            "port_speed": iface.port_speed or "-",
+            "sfp_vendor": iface.sfp_vendor or "-",
+            "sfp_part_number": iface.sfp_part_number or "-",
+            "sfp_serial": iface.sfp_serial or "-",
+            "sfp_wavelength": iface.sfp_wavelength,
+            "sfp_temperature": iface.sfp_temperature,
+            "sfp_voltage": iface.sfp_voltage,
+            "sfp_tx_power": iface.sfp_tx_power,
+            "sfp_rx_power": iface.sfp_rx_power,
+            "sfp_rx_loss": bool(iface.sfp_rx_loss),
+            "sfp_tx_fault": bool(iface.sfp_tx_fault),
             "last_updated": iface.last_updated.strftime("%d/%m/%Y %H:%M:%S") if iface.last_updated else "-"
         })
     

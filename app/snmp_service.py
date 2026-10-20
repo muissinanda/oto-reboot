@@ -49,10 +49,100 @@ OID_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"                  # ifDescr fallback
 OID_IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"              # ifAlias (MikroTik Comment)
 OID_IF_TYPE = "1.3.6.1.2.1.2.2.1.3"                   # ifType (6=ethernet, 135=vlan, etc)
 OID_IF_OPER_STATUS = "1.3.6.1.2.1.2.2.1.8"            # 1 = UP, 2 = DOWN
+OID_IF_HIGH_SPEED = "1.3.6.1.2.1.31.1.1.1.15"         # ifHighSpeed (Mbps: 1000=1G, 10000=10G, 25000=25G)
 OID_IF_HC_IN_OCTETS = "1.3.6.1.2.1.31.1.1.1.6"       # 64-bit Rx bytes
 OID_IF_HC_OUT_OCTETS = "1.3.6.1.2.1.31.1.1.1.10"     # 64-bit Tx bytes
 OID_IF_IN_OCTETS_32 = "1.3.6.1.2.1.2.2.1.10"          # 32-bit Rx fallback
 OID_IF_OUT_OCTETS_32 = "1.3.6.1.2.1.2.2.1.16"        # 32-bit Tx fallback
+
+# MikroTik Optical Table (SFP / DDM Telemetry)
+OID_MT_OPT_NAME = "1.3.6.1.4.1.14988.1.1.19.1.1.2"        # Nama interface (e.g. sfp-sfpplus1)
+OID_MT_OPT_RX_LOSS = "1.3.6.1.4.1.14988.1.1.19.1.1.3"     # 0 = Normal, 1 = Loss of Signal
+OID_MT_OPT_TX_FAULT = "1.3.6.1.4.1.14988.1.1.19.1.1.4"    # 0 = Normal, 1 = Laser Fault
+OID_MT_OPT_WAVELENGTH = "1.3.6.1.4.1.14988.1.1.19.1.1.5"  # Wavelength (nm, e.g. 1310, 850)
+OID_MT_OPT_TEMP = "1.3.6.1.4.1.14988.1.1.19.1.1.6"        # Suhu SFP (°C)
+OID_MT_OPT_VOLTAGE = "1.3.6.1.4.1.14988.1.1.19.1.1.7"     # Supply Voltage (mV / V)
+OID_MT_OPT_TX_POWER = "1.3.6.1.4.1.14988.1.1.19.1.1.9"    # TX Power (dBm)
+OID_MT_OPT_RX_POWER = "1.3.6.1.4.1.14988.1.1.19.1.1.10"   # RX Power (Redaman dBm)
+OID_MT_OPT_VENDOR = "1.3.6.1.4.1.14988.1.1.19.1.1.11"     # Merk / Vendor SFP
+OID_MT_OPT_SERIAL = "1.3.6.1.4.1.14988.1.1.19.1.1.12"     # Serial Number SFP
+OID_MT_OPT_PART = "1.3.6.1.4.1.14988.1.1.19.1.1.13"       # Part Number SFP
+
+def parse_optical_power(val: Any) -> Optional[float]:
+    """Konversi nilai optical power ke format dBm standar"""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if f == 0:
+            return 0.0
+        # Jika nilai dalam satuan 0.01 dBm (e.g. -1450 -> -14.50 dBm)
+        if abs(f) >= 100 and abs(f) < 10000:
+            return round(f / 100.0, 2)
+        # Jika nilai dalam satuan 0.001 dBm (e.g. -14500 -> -14.50 dBm)
+        if abs(f) >= 10000:
+            return round(f / 1000.0, 2)
+        return round(f, 2)
+    except Exception:
+        return None
+
+def parse_optical_temp(val: Any) -> Optional[float]:
+    """Konversi suhu SFP ke format Celcius (°C)"""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if f > 150:
+            return round(f / 10.0 if f < 1500 else f / 100.0, 1)
+        return round(f, 1)
+    except Exception:
+        return None
+
+def parse_optical_voltage(val: Any) -> Optional[float]:
+    """Konversi tegangan SFP ke Volt (V)"""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if f > 100:
+            return round(f / 1000.0, 2)
+        return round(f, 2)
+    except Exception:
+        return None
+
+def determine_port_speed(if_name: str, high_speed: Optional[int]) -> str:
+    """Tentukan label kecepatan port SFP / Ethernet: 1G, 10G, 25G, 40G, 100G"""
+    n = if_name.lower()
+    if high_speed and high_speed > 0:
+        if high_speed >= 100000:
+            return "100G QSFP28"
+        if high_speed >= 40000:
+            return "40G QSFP+"
+        if high_speed >= 25000:
+            return "25G SFP28"
+        if high_speed >= 10000:
+            return "10G SFP+"
+        if high_speed >= 1000:
+            if "sfpplus" in n or "sfp+" in n:
+                return "10G SFP+"
+            return "1G SFP" if "sfp" in n else "1 Gbps"
+        if high_speed >= 100:
+            return "100 Mbps"
+    
+    # Deteksi berbasis nama port router (CCR2004, CRS, dll)
+    if "sfp28" in n or "25g" in n:
+        return "25G SFP28"
+    if "sfpplus" in n or "sfp+" in n or "10g" in n:
+        return "10G SFP+"
+    if "qsfp28" in n or "100g" in n:
+        return "100G QSFP28"
+    if "qsfp" in n or "40g" in n:
+        return "40G QSFP+"
+    if "sfp" in n:
+        return "1G SFP"
+    if "ether" in n:
+        return "1 Gbps"
+    return "-"
 
 def format_uptime(timeticks: Optional[int]) -> str:
     """Format timeticks (1/100 s) menjadi format human readable misal: 12d 4h 32m"""
@@ -380,7 +470,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
             pass
 
         # -----------------------------------------------------------------
-        # LANGKAH 4: INTERFACES & TRAFFIC RATE
+        # LANGKAH 4: INTERFACES, TRAFFIC RATE & DETAIL SFP / OPTIK
         # -----------------------------------------------------------------
         try:
             # Ambil nama interface (ifName, fallback ifDescr)
@@ -389,11 +479,12 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                 if_names = await walk_oid_column(snmp_engine, auth_data, transport, OID_IF_DESCR, 25)
 
             if if_names:
-                # Ambil paralel: alias (komentar), operStatus, ifType, 64-bit HC Octets
-                if_aliases, if_status, if_types, if_rx_64, if_tx_64 = await asyncio.gather(
+                # Ambil paralel: alias (komentar), operStatus, ifType, ifHighSpeed, 64-bit HC Octets
+                if_aliases, if_status, if_types, if_speeds, if_rx_64, if_tx_64 = await asyncio.gather(
                     walk_oid_column(snmp_engine, auth_data, transport, OID_IF_ALIAS, 25),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_IF_OPER_STATUS, 25),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_IF_TYPE, 25),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_IF_HIGH_SPEED, 25),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_IF_HC_IN_OCTETS, 25),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_IF_HC_OUT_OCTETS, 25),
                     return_exceptions=True
@@ -410,8 +501,55 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                 aliases_dict = if_aliases if isinstance(if_aliases, dict) else {}
                 status_dict = if_status if isinstance(if_status, dict) else {}
                 types_dict = if_types if isinstance(if_types, dict) else {}
+                speeds_dict = if_speeds if isinstance(if_speeds, dict) else {}
                 rx_dict = if_rx_64 if has_hc else if_rx_32
                 tx_dict = if_tx_64 if (isinstance(if_tx_64, dict) and len(if_tx_64) > 0) else if_tx_32
+
+                # Ambil data tabel Optical SFP MikroTik (DDM)
+                optical_by_name = {}
+                try:
+                    opt_names = await walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_NAME, 25)
+                    if opt_names:
+                        res_opt = await asyncio.gather(
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_RX_LOSS, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_TX_FAULT, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_WAVELENGTH, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_TEMP, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_VOLTAGE, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_TX_POWER, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_RX_POWER, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_VENDOR, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_SERIAL, 25),
+                            walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_PART, 25),
+                            return_exceptions=True
+                        )
+                        opt_rx_loss = res_opt[0] if isinstance(res_opt[0], dict) else {}
+                        opt_tx_fault = res_opt[1] if isinstance(res_opt[1], dict) else {}
+                        opt_wave = res_opt[2] if isinstance(res_opt[2], dict) else {}
+                        opt_temp = res_opt[3] if isinstance(res_opt[3], dict) else {}
+                        opt_volt = res_opt[4] if isinstance(res_opt[4], dict) else {}
+                        opt_tx_pow = res_opt[5] if isinstance(res_opt[5], dict) else {}
+                        opt_rx_pow = res_opt[6] if isinstance(res_opt[6], dict) else {}
+                        opt_vendor = res_opt[7] if isinstance(res_opt[7], dict) else {}
+                        opt_serial = res_opt[8] if isinstance(res_opt[8], dict) else {}
+                        opt_part = res_opt[9] if isinstance(res_opt[9], dict) else {}
+
+                        for o_idx, o_name_val in opt_names.items():
+                            k_name = str(o_name_val).strip().lower()
+                            optical_by_name[k_name] = {
+                                "rx_loss": bool(int(opt_rx_loss.get(o_idx, 0)) == 1),
+                                "tx_fault": bool(int(opt_tx_fault.get(o_idx, 0)) == 1),
+                                "wavelength": int(opt_wave.get(o_idx, 0)) if opt_wave.get(o_idx) else None,
+                                "temperature": parse_optical_temp(opt_temp.get(o_idx)),
+                                "voltage": parse_optical_voltage(opt_volt.get(o_idx)),
+                                "tx_power": parse_optical_power(opt_tx_pow.get(o_idx)),
+                                "rx_power": parse_optical_power(opt_rx_pow.get(o_idx)),
+                                "vendor": str(opt_vendor.get(o_idx, "")).strip() or None,
+                                "serial": str(opt_serial.get(o_idx, "")).strip() or None,
+                                "part": str(opt_part.get(o_idx, "")).strip() or None,
+                            }
+                except Exception:
+                    pass
 
                 now_dt = now_wib()
                 existing_interfaces = {
@@ -428,6 +566,13 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     is_up = (int(status_dict.get(if_idx, 2)) == 1)
                     type_num = int(types_dict.get(if_idx, 0))
                     if_type_cat = classify_interface_type(if_name, type_num)
+
+                    # Deteksi port speed & SFP DDM
+                    speed_mbps_val = int(speeds_dict.get(if_idx, 0)) if speeds_dict.get(if_idx) else None
+                    port_speed_label = determine_port_speed(if_name, speed_mbps_val)
+                    is_sfp_port = ("sfp" in if_name.lower()) or (if_name.lower() in optical_by_name)
+
+                    opt_data = optical_by_name.get(if_name.lower(), {})
 
                     new_rx = int(rx_dict.get(if_idx, 0))
                     new_tx = int(tx_dict.get(if_idx, 0))
@@ -458,6 +603,21 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         iface_obj.total_rx_gb = round(new_rx / (1024 ** 3), 2)
                         iface_obj.total_tx_gb = round(new_tx / (1024 ** 3), 2)
                         iface_obj.last_updated = now_dt
+
+                        # SFP & Optical telemetry
+                        iface_obj.is_sfp = is_sfp_port
+                        iface_obj.port_speed = port_speed_label
+                        iface_obj.sfp_vendor = opt_data.get("vendor")
+                        iface_obj.sfp_part_number = opt_data.get("part")
+                        iface_obj.sfp_serial = opt_data.get("serial")
+                        iface_obj.sfp_wavelength = opt_data.get("wavelength")
+                        iface_obj.sfp_temperature = opt_data.get("temperature")
+                        iface_obj.sfp_voltage = opt_data.get("voltage")
+                        iface_obj.sfp_tx_power = opt_data.get("tx_power")
+                        iface_obj.sfp_rx_power = opt_data.get("rx_power")
+                        iface_obj.sfp_rx_loss = opt_data.get("rx_loss", False)
+                        iface_obj.sfp_tx_fault = opt_data.get("tx_fault", False)
+
                     else:
                         new_iface = DeviceInterface(
                             device_id=dev.id,
@@ -472,7 +632,19 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                             tx_rate_mbps=0.0,
                             total_rx_gb=round(new_rx / (1024 ** 3), 2),
                             total_tx_gb=round(new_tx / (1024 ** 3), 2),
-                            last_updated=now_dt
+                            last_updated=now_dt,
+                            is_sfp=is_sfp_port,
+                            port_speed=port_speed_label,
+                            sfp_vendor=opt_data.get("vendor"),
+                            sfp_part_number=opt_data.get("part"),
+                            sfp_serial=opt_data.get("serial"),
+                            sfp_wavelength=opt_data.get("wavelength"),
+                            sfp_temperature=opt_data.get("temperature"),
+                            sfp_voltage=opt_data.get("voltage"),
+                            sfp_tx_power=opt_data.get("tx_power"),
+                            sfp_rx_power=opt_data.get("rx_power"),
+                            sfp_rx_loss=opt_data.get("rx_loss", False),
+                            sfp_tx_fault=opt_data.get("tx_fault", False)
                         )
                         db.add(new_iface)
 

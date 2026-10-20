@@ -122,6 +122,20 @@ class DeviceInterface(Base):
     total_tx_gb = Column(Float, default=0.0)
     last_updated = Column(DateTime, nullable=True)
 
+    # Detail SFP & Optical Diagnostics (DDM)
+    is_sfp = Column(Boolean, default=False)
+    port_speed = Column(String(50), nullable=True)     # "1G SFP", "10G SFP+", "25G SFP28"
+    sfp_vendor = Column(String(100), nullable=True)    # Merk SFP (MikroTik, OEM, Cisco, Finisar)
+    sfp_part_number = Column(String(100), nullable=True) # Part number SFP (S+85DLC03D, dll)
+    sfp_serial = Column(String(100), nullable=True)    # Serial number
+    sfp_wavelength = Column(Integer, nullable=True)    # Panjang gelombang (nm: 1310, 850, 1550)
+    sfp_temperature = Column(Float, nullable=True)     # Suhu SFP (°C)
+    sfp_voltage = Column(Float, nullable=True)         # Voltase SFP (V)
+    sfp_tx_power = Column(Float, nullable=True)        # TX Power (dBm)
+    sfp_rx_power = Column(Float, nullable=True)        # Redaman / RX Power (dBm)
+    sfp_rx_loss = Column(Boolean, default=False)       # True jika sinyal putus / Loss of Signal
+    sfp_tx_fault = Column(Boolean, default=False)      # True jika laser fault
+
     device = relationship("NetworkDevice", back_populates="interfaces")
 
 import hashlib
@@ -187,6 +201,31 @@ def init_db():
             if "avatar_url" not in usr_cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(300)"))
                 conn.commit()
+
+            # Migrasi tabel device_interfaces untuk kolom SFP
+            res_iface = conn.execute(text("PRAGMA table_info(device_interfaces)")).fetchall()
+            iface_cols = [row[1] for row in res_iface]
+            sfp_cols = [
+                ("is_sfp", "BOOLEAN DEFAULT 0"),
+                ("port_speed", "VARCHAR(50)"),
+                ("sfp_vendor", "VARCHAR(100)"),
+                ("sfp_part_number", "VARCHAR(100)"),
+                ("sfp_serial", "VARCHAR(100)"),
+                ("sfp_wavelength", "INTEGER"),
+                ("sfp_temperature", "FLOAT"),
+                ("sfp_voltage", "FLOAT"),
+                ("sfp_tx_power", "FLOAT"),
+                ("sfp_rx_power", "FLOAT"),
+                ("sfp_rx_loss", "BOOLEAN DEFAULT 0"),
+                ("sfp_tx_fault", "BOOLEAN DEFAULT 0"),
+            ]
+            for col_name, col_type in sfp_cols:
+                if col_name not in iface_cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE device_interfaces ADD COLUMN {col_name} {col_type}"))
+                        conn.commit()
+                    except Exception:
+                        pass
         except Exception:
             pass
 
