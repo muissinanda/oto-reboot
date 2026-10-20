@@ -1,23 +1,20 @@
 import time
+import subprocess
+import shutil
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import paramiko
 from paramiko.transport import Transport
 from app.database import SessionLocal, AccessPoint, RebootLog, get_setting
 
-# Aktifkan KEX dan Host Key legacy agar kompatibel dengan Dropbear SSH pada AP UniFi & Ruckus versi lawas
-LEGACY_KEX = (
-    "diffie-hellman-group14-sha1",
-    "diffie-hellman-group-exchange-sha1",
-    "diffie-hellman-group1-sha1",
-)
-LEGACY_KEYS = (
-    "ssh-rsa",
-    "ssh-dss",
-)
+# Daftarkan KEX dan Host Key legacy hanya jika didukung oleh modul internal Paramiko (mencegah KeyError)
+for kex_algo in ("diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1", "diffie-hellman-group-exchange-sha1"):
+    if hasattr(Transport, "_kex_info") and kex_algo in Transport._kex_info and kex_algo not in Transport._preferred_kex:
+        Transport._preferred_kex = (kex_algo,) + Transport._preferred_kex
 
-Transport._preferred_kex = tuple(k for k in LEGACY_KEX if k not in Transport._preferred_kex) + Transport._preferred_kex
-Transport._preferred_keys = tuple(k for k in LEGACY_KEYS if k not in Transport._preferred_keys) + Transport._preferred_keys
+for key_algo in ("ssh-rsa", "ssh-dss"):
+    if hasattr(Transport, "_key_info") and key_algo in Transport._key_info and key_algo not in Transport._preferred_keys:
+        Transport._preferred_keys = (key_algo,) + Transport._preferred_keys
 
 MAX_WORKERS = 25
 
@@ -52,6 +49,42 @@ def reboot_ruckus_shell(ssh, username, password, timeout=10):
     if shell.recv_ready():
         output = shell.recv(5000).decode(errors='ignore')
     return output.strip()
+
+def reboot_via_system_ssh(ip: str, port: int, username: str, password: str, device_type: str = "unifi", timeout: int = 10):
+    """
+    Fallback reboot menggunakan system OpenSSH client + sshpass.
+    Sangat andal untuk Dropbear UniFi firmware lama yang menggunakan KEX diffie-hellman-group14-sha1 & ssh-rsa.
+    """
+    if not shutil.which("sshpass"):
+        return False, "sshpass belum tersedia di sistem"
+
+    if device_type == "ruckus":
+        return False, "Ruckus menggunakan interactive rkscli shell"
+
+    cmd = [
+        "sshpass", "-p", password,
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1",
+        "-o", "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
+        "-o", "PubkeyAcceptedKeyTypes=+ssh-rsa",
+        "-o", f"ConnectTimeout={timeout}",
+        "-p", str(port),
+        f"{username}@{ip}",
+        "reboot"
+    ]
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 3)
+        out = (proc.stdout + " " + proc.stderr).lower()
+        if proc.returncode == 0 or "closed by remote host" in out or "connection reset" in out:
+            return True, "Reboot terkirim via OpenSSH Fallback (Dropbear legacy compatible)"
+        return False, proc.stderr.strip() or proc.stdout.strip() or f"Exit code {proc.returncode}"
+    except subprocess.TimeoutExpired:
+        return True, "Reboot terkirim (AP memutus koneksi saat reboot)"
+    except Exception as ex:
+        return False, str(ex)
 
 def execute_ssh_reboot(ap_id: int, trigger_type: str = "manual", schedule_name: str = None):
     """
@@ -159,9 +192,34 @@ def execute_ssh_reboot(ap_id: int, trigger_type: str = "manual", schedule_name: 
             }
 
         except Exception as e:
+            # Jika paramiko mengalami kendala KEX/cipher mismatch pada Dropbear, gunakan fallback OpenSSH + sshpass
+            fb_ok, fb_msg = reboot_via_system_ssh(ap.ip, port, username, password, device_type, global_timeout)
             duration_ms = int((time.time() - start_time) * 1000)
+
+            if fb_ok:
+                ap.last_rebooted = datetime.utcnow()
+                log = RebootLog(
+                    ap_id=ap.id,
+                    ap_name=ap.name,
+                    ap_ip=ap.ip,
+                    trigger_type=trigger_type,
+                    schedule_name=schedule_name,
+                    status="success",
+                    message=f"Reboot berhasil ({device_type.upper()} via OpenSSH Fallback: {fb_msg})",
+                    duration_ms=duration_ms
+                )
+                db.add(log)
+                db.commit()
+
+                return {
+                    "ap_id": ap.id,
+                    "name": ap.name,
+                    "ip": ap.ip,
+                    "status": "success",
+                    "message": f"Berhasil reboot ({device_type.upper()} via OpenSSH)"
+                }
+
             err_msg = str(e)
-            
             log = RebootLog(
                 ap_id=ap.id,
                 ap_name=ap.name,
@@ -169,7 +227,7 @@ def execute_ssh_reboot(ap_id: int, trigger_type: str = "manual", schedule_name: 
                 trigger_type=trigger_type,
                 schedule_name=schedule_name,
                 status="failed",
-                message=f"SSH Error ({device_type.upper()}): {err_msg}",
+                message=f"SSH Error ({device_type.upper()}): {err_msg} | Fallback: {fb_msg}",
                 duration_ms=duration_ms
             )
             db.add(log)
