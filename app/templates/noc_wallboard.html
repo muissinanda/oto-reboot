@@ -175,6 +175,20 @@
             font-weight: 600;
         }
 
+        /* Site Filter Tabs on Header */
+        .site-tab-btn {
+            font-size: 0.82rem !important;
+            font-weight: 700 !important;
+            padding: 5px 12px !important;
+            letter-spacing: 0.02em;
+        }
+        .site-tab-btn.active {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(79, 70, 229, 0.35)) !important;
+            border-color: rgba(165, 180, 252, 0.6) !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.4) !important;
+        }
+
         /* History Time Range Pills */
         .range-pill {
             background: rgba(255, 255, 255, 0.04);
@@ -480,38 +494,41 @@
                     <div class="col-12 col-md-6 device-card-col" data-site="{{ d.site }}">
                         <div class="glass-panel p-3 h-100 border-start border-3 {% if d.is_online %}border-success{% else %}border-danger{% endif %}">
                             
-                            <!-- Card Header: Name, Type, Site, Status -->
-                            <div class="d-flex justify-content-between align-items-start mb-2.5">
-                                <div class="d-flex align-items-center gap-2.5">
-                                    <div class="p-2 rounded-2" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1;">
-                                        {% if d.device_type == 'mikrotik' %}
-                                            <i class="bi bi-hdd-network text-info fs-4"></i>
-                                        {% elif d.device_type == 'access_point' %}
-                                            <i class="bi bi-router text-warning fs-4"></i>
-                                        {% else %}
-                                            <i class="bi bi-ethernet text-primary fs-4"></i>
-                                        {% endif %}
-                                    </div>
-                                    <div>
-                                        <div class="fw-extrabold text-light fs-5 lh-1 text-truncate" style="max-width: 220px;" title="{{ d.name }}">{{ d.name }}</div>
-                                        <div class="text-secondary font-mono small text-truncate mt-1" style="font-size: 0.72rem; max-width: 220px;" title="{{ d.model_info }}">{{ d.model_info }}</div>
-                                    </div>
+                            <!-- Card Header: Site & Online Status (Prominent Billboard Row) -->
+                            <div class="d-flex justify-content-between align-items-center mb-2.5 pb-2 border-bottom border-light border-opacity-10">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge px-2.5 py-1.5 rounded-2 font-mono text-uppercase d-inline-flex align-items-center"
+                                          style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(79, 70, 229, 0.35)); color: #e0e7ff; border: 1px solid rgba(165, 180, 252, 0.6); font-size: 0.95rem; font-weight: 800; letter-spacing: 0.04em; box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);">
+                                        <i class="bi bi-geo-alt-fill text-warning me-1.5 fs-6"></i>{{ d.site }}
+                                    </span>
                                 </div>
-                                <div class="text-end">
+                                <div>
                                     {% if d.is_online %}
-                                        <span class="badge font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.75rem; padding: 4px 8px;">
+                                        <span class="badge font-mono fw-bold" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 0.82rem; padding: 5px 11px; letter-spacing: 0.03em;">
                                             ● ONLINE
                                         </span>
                                     {% else %}
-                                        <span class="badge font-mono" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.75rem; padding: 4px 8px;">
+                                        <span class="badge font-mono fw-bold" style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); font-size: 0.82rem; padding: 5px 11px; letter-spacing: 0.03em;">
                                             ● OFFLINE
                                         </span>
                                     {% endif %}
-                                    <div class="mt-1">
-                                        <span class="badge" style="background: rgba(255, 255, 255, 0.06); color: #cbd5e1; font-size: 0.68rem;">
-                                            <i class="bi bi-geo-alt me-0.5 text-secondary"></i>{{ d.site }}
-                                        </span>
-                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Device Identity: Type Icon + Full Device Name & Model -->
+                            <div class="d-flex align-items-center gap-2.5 mb-2.5">
+                                <div class="p-2 rounded-2 flex-shrink-0" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1;">
+                                    {% if d.device_type == 'mikrotik' %}
+                                        <i class="bi bi-hdd-network text-info fs-3"></i>
+                                    {% elif d.device_type == 'access_point' %}
+                                        <i class="bi bi-router text-warning fs-3"></i>
+                                    {% else %}
+                                        <i class="bi bi-ethernet text-primary fs-3"></i>
+                                    {% endif %}
+                                </div>
+                                <div class="overflow-hidden flex-grow-1">
+                                    <div class="fw-extrabold text-light fs-5 lh-sm text-truncate" title="{{ d.name }}">{{ d.name }}</div>
+                                    <div class="text-secondary font-mono small text-truncate mt-0.5" style="font-size: 0.74rem;" title="{{ d.model_info }}">{{ d.model_info }}</div>
                                 </div>
                             </div>
 
