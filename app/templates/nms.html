@@ -313,16 +313,16 @@
                         </td>
                         <td class="text-end pe-4">
                             <div class="d-inline-flex align-items-center gap-1">
-                                <button class="btn btn-sm btn-modern-primary" title="Detail Traffic & Interface" onclick="openInterfacesModal({{ d.id }}, '{{ d.name }}')">
+                                <button class="btn btn-sm btn-modern-primary" title="Detail Traffic & Interface" onclick="openInterfacesModalById({{ d.id }})">
                                     <i class="bi bi-bar-chart-line"></i> Traffic
                                 </button>
                                 <button class="btn btn-sm btn-modern-outline" title="Poll Sekarang" onclick="pollSingleDevice({{ d.id }}, this)">
                                     <i class="bi bi-arrow-clockwise"></i>
                                 </button>
-                                <button class="btn btn-sm btn-modern-outline" title="Edit Perangkat" onclick='openEditModal({{ d|tojson }})'>
+                                <button class="btn btn-sm btn-modern-outline" title="Edit Perangkat" onclick="openEditModalById({{ d.id }})">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <button class="btn btn-sm btn-modern-outline text-danger border-danger border-opacity-25" title="Hapus" onclick="deleteDevice({{ d.id }}, '{{ d.name }}')">
+                                <button class="btn btn-sm btn-modern-outline text-danger border-danger border-opacity-25" title="Hapus" onclick="deleteDeviceById({{ d.id }})">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </div>
@@ -762,12 +762,30 @@
 
 {% block extra_scripts %}
 <script>
+const allDevices = {{ devices|tojson }};
 let currentSelectedSite = "";
 let currentActiveDeviceId = null;
 let currentInterfacesData = [];
 let currentSortField = "rx"; // rx, tx, total, volume, name
 let currentSortOrder = "desc";
 let currentIfaceTypeFilter = "";
+
+function openInterfacesModalById(devId) {
+    const d = allDevices.find(x => x.id === devId);
+    const name = d ? d.name : "Perangkat";
+    openInterfacesModal(devId, name);
+}
+
+function openEditModalById(devId) {
+    const d = allDevices.find(x => x.id === devId);
+    if (d) openEditModal(d);
+}
+
+function deleteDeviceById(devId) {
+    const d = allDevices.find(x => x.id === devId);
+    const name = d ? d.name : "Perangkat";
+    deleteDevice(devId, name);
+}
 
 // Site Tab Filtering
 function selectSiteTab(site, btn) {
@@ -1478,9 +1496,6 @@ function openSfpModal(ifaceId) {
     const txBox = document.getElementById('sfpTxPowerVal');
     if (iface.sfp_tx_power !== null && iface.sfp_tx_power !== undefined) {
         txBox.innerText = `${iface.sfp_tx_power.toFixed(3)} dBm`;
-    } else {
-        txBox.innerText = "-";
-    }
     } else {
         txBox.innerText = "-";
     }
