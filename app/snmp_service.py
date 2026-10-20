@@ -15,7 +15,7 @@ from pysnmp.hlapi.asyncio import (
     bulk_walk_cmd
 )
 
-from app.database import SessionLocal, NetworkDevice, DeviceInterface, now_wib
+from app.database import SessionLocal, NetworkDevice, DeviceInterface, NetworkTrafficHistory, now_wib
 
 # Standard System OIDs (RFC 1213)
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
@@ -667,6 +667,24 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
 
         except Exception as e:
             # Jangan batalkan seluruh transaksi hanya jika pembacaan antarmuka mengalami kendala
+            pass
+
+        # Rekam snapshot traffic ke tabel histori (NetworkTrafficHistory)
+        try:
+            total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in dev.interfaces)
+            total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in dev.interfaces)
+            hist = NetworkTrafficHistory(
+                device_id=dev.id,
+                site=dev.site or "Fasilkom",
+                timestamp=now_wib(),
+                rx_mbps=round(total_rx, 2),
+                tx_mbps=round(total_tx, 2),
+                total_mbps=round(total_rx + total_tx, 2),
+                cpu_usage=dev.cpu_usage,
+                temperature=dev.temperature
+            )
+            db.add(hist)
+        except Exception:
             pass
 
         db.commit()

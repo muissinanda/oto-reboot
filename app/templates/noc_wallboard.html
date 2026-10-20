@@ -14,7 +14,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     
-    <!-- Chart.js for High-Tech Realtime Telemetry Graph -->
+    <!-- Chart.js for High-Tech Realtime & Historical Telemetry Graph -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
     <style>
@@ -158,7 +158,7 @@
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: #cbd5e1;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             padding: 5px 12px;
             border-radius: 8px;
             transition: all 0.2s;
@@ -172,6 +172,31 @@
             background: rgba(6, 182, 212, 0.2);
             border-color: rgba(6, 182, 212, 0.4);
             color: #22d3ee;
+            font-weight: 600;
+        }
+
+        /* History Time Range Pills */
+        .range-pill {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #94a3b8;
+            font-size: 0.72rem;
+            padding: 3px 9px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .range-pill:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .range-pill.active {
+            background: rgba(6, 182, 212, 0.25);
+            border-color: rgba(6, 182, 212, 0.5);
+            color: #22d3ee;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
         }
 
         /* Progress Split */
@@ -227,7 +252,7 @@
                     <span>NETWORK OPERATIONS CENTER</span>
                 </h1>
                 <div class="text-secondary small font-mono d-none d-md-block" style="font-size: 0.68rem;">
-                    Fleet Real-Time Telemetry & Optical Backbone Monitor
+                    Fleet Real-Time Telemetry & Optical Backbone Monitor • Semua Site
                 </div>
             </div>
         </div>
@@ -242,15 +267,23 @@
             </div>
         </div>
 
-        <!-- Right: Controls (Site Filter, Sound Alert, Sync Countdown, Fullscreen) -->
+        <!-- Right: Controls (Site Filter, Auto-Cycle, Sound Alert, Sync Countdown, Fullscreen) -->
         <div class="d-flex align-items-center gap-2 order-2 order-lg-3 flex-wrap">
-            <!-- Site Tabs -->
+            <!-- Site Tabs (Shows all sites from NMS) -->
             <div class="btn-group btn-group-sm d-none d-xl-flex" id="siteFilterGroup">
-                <button class="btn btn-noc active" onclick="setSiteFilter('')" id="btnSiteAll">Semua Site</button>
+                <button class="btn btn-noc active site-tab-btn" onclick="setSiteFilter('', this)" id="btnSiteAll">
+                    Semua Site (<span id="countAllSites">{{ devices|length }}</span>)
+                </button>
                 {% for s in sites %}
-                    <button class="btn btn-noc" onclick="setSiteFilter('{{ s }}')" id="btnSite{{ loop.index }}">{{ s }}</button>
+                    <button class="btn btn-noc site-tab-btn" onclick="setSiteFilter('{{ s }}', this)">{{ s }}</button>
                 {% endfor %}
             </div>
+
+            <!-- Auto-Cycle Toggle for TV Screens -->
+            <button class="btn btn-noc" id="btnAutoCycle" onclick="toggleAutoCycle()" title="Ganti tampilan site otomatis setiap 15 detik untuk TV">
+                <i class="bi bi-arrow-repeat" id="cycleIcon"></i>
+                <span class="d-none d-sm-inline ms-1" id="cycleText">Cycle: Off</span>
+            </button>
 
             <!-- Audio Alert Toggle -->
             <button class="btn btn-noc" id="btnAudioToggle" onclick="toggleAudioAlert()" title="Bunyikan suara peringatan jika link putus">
@@ -277,7 +310,7 @@
         </div>
     </header>
 
-    <!-- CRITICAL ALERTS BANNER (Hidden by default, shown when LOS or Offline occurs) -->
+    <!-- CRITICAL ALERTS BANNER -->
     <div class="container-fluid px-3 px-md-4 mt-3">
         <div class="noc-alert-banner" id="alertBanner">
             <div class="d-flex align-items-center justify-content-between">
@@ -424,11 +457,11 @@
 
         </div>
 
-        <!-- SPLIT WORKSPACE: LEFT (FLEET CARDS) & RIGHT (TOP BACKBONES & LIVE CHART) -->
+        <!-- SPLIT WORKSPACE: LEFT (FLEET CARDS) & RIGHT (TOP BACKBONES & MULTI-RANGE HISTORY CHART) -->
         <div class="row g-3">
             
             <!-- LEFT COLUMN: PERANGKAT MONITOR CARDS (TV WALLBOARD GRID) -->
-            <div class="col-12 col-xl-8">
+            <div class="col-12 col-xl-7">
                 <div class="d-flex justify-content-between align-items-center mb-2.5">
                     <div class="d-flex align-items-center gap-2">
                         <i class="bi bi-hdd-network text-info fs-5"></i>
@@ -583,9 +616,82 @@
                 </div>
             </div>
 
-            <!-- RIGHT COLUMN: LIVE FLOW CHART & TOP BACKBONES LEADERBOARD -->
-            <div class="col-12 col-xl-4">
+            <!-- RIGHT COLUMN: MULTI-RANGE HISTORICAL CHART & TOP BACKBONES LEADERBOARD -->
+            <div class="col-12 col-xl-5">
                 
+                <!-- MULTI-RANGE TRAFFIC THROUGHPUT & HISTORICAL CHART (30 Hari, Seminggu, 3 Hari, 1 Hari, Live) -->
+                <div class="glass-panel p-3 mb-3">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2.5">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-graph-up-arrow text-info"></i>
+                            <h2 class="h6 mb-0 fw-bold text-light font-mono">HISTORI & TELEMETRI TRAFFIC</h2>
+                        </div>
+                        
+                        <!-- Range Selector Pills: Live, 1d, 3d, 7d, 30d -->
+                        <div class="d-flex align-items-center gap-1" id="historyRangeGroup">
+                            <button class="range-pill" data-range="live" onclick="changeHistoryRange('live', this)">
+                                <span class="pulse-dot online me-0.5" style="width: 6px; height: 6px;"></span>Live
+                            </button>
+                            <button class="range-pill active" data-range="1d" onclick="changeHistoryRange('1d', this)">1 Hari</button>
+                            <button class="range-pill" data-range="3d" onclick="changeHistoryRange('3d', this)">3 Hari</button>
+                            <button class="range-pill" data-range="7d" onclick="changeHistoryRange('7d', this)">Seminggu</button>
+                            <button class="range-pill" data-range="30d" onclick="changeHistoryRange('30d', this)">30 Hari</button>
+                        </div>
+                    </div>
+
+                    <!-- Filter Perangkat untuk Histori -->
+                    <div class="d-flex justify-content-between align-items-center mb-2 font-mono small">
+                        <div class="d-flex align-items-center gap-1.5" style="font-size: 0.72rem;">
+                            <span class="text-secondary">Sumber Data:</span>
+                            <select id="chartDeviceSelect" class="form-select form-select-sm py-0 px-2" style="font-size: 0.72rem; width: auto; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1); color: #e2e8f0;" onchange="reloadHistory()">
+                                <option value="">Semua Perangkat (Fleet Total)</option>
+                                {% for d in devices %}
+                                    <option value="{{ d.id }}">{{ d.name }} ({{ d.site }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;" id="chartRangeBadge">
+                            24 Jam Terakhir
+                        </span>
+                    </div>
+
+                    <!-- Canvas Chart -->
+                    <div style="height: 220px; position: relative;">
+                        <canvas id="telemetryChart"></canvas>
+                    </div>
+
+                    <!-- Legend & Peak/Avg/Volume Stat Highlights -->
+                    <div class="row g-2 mt-2 pt-2 border-top border-light border-opacity-10 text-center font-mono small" style="font-size: 0.72rem;">
+                        <div class="col-4">
+                            <div class="p-1.5 rounded" style="background: rgba(255,255,255,0.02);">
+                                <div class="text-secondary" style="font-size: 0.65rem;">TRAFFIC PUNCAK</div>
+                                <div class="fw-bold glow-cyan mt-0.5" id="histPeakVal">-</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-1.5 rounded" style="background: rgba(255,255,255,0.02);">
+                                <div class="text-secondary" style="font-size: 0.65rem;">RATA-RATA</div>
+                                <div class="fw-bold text-light mt-0.5" id="histAvgVal">-</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="p-1.5 rounded" style="background: rgba(255,255,255,0.02);">
+                                <div class="text-secondary" style="font-size: 0.65rem;">TOTAL VOLUME</div>
+                                <div class="fw-bold text-success mt-0.5" id="histVolumeVal">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-center align-items-center gap-3 mt-2 font-mono small" style="font-size: 0.7rem;">
+                        <span class="d-flex align-items-center gap-1 text-cyan">
+                            <span style="display:inline-block; width: 10px; height: 10px; background: #06b6d4; border-radius: 2px;"></span> Download (Rx)
+                        </span>
+                        <span class="d-flex align-items-center gap-1" style="color: #c084fc;">
+                            <span style="display:inline-block; width: 10px; height: 10px; background: #a855f7; border-radius: 2px;"></span> Upload (Tx)
+                        </span>
+                    </div>
+                </div>
+
                 <!-- TOP BACKBONE INTERFACES LEADERBOARD -->
                 <div class="glass-panel p-3 mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -634,30 +740,6 @@
                     </div>
                 </div>
 
-                <!-- REAL-TIME TELEMETRY STREAM CHART -->
-                <div class="glass-panel p-3 mb-3">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-graph-up-arrow text-info"></i>
-                            <h2 class="h6 mb-0 fw-bold text-light font-mono">LIVE THROUGHPUT STREAM</h2>
-                        </div>
-                        <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;">
-                            Mbps (30 Point)
-                        </span>
-                    </div>
-                    <div style="height: 190px;">
-                        <canvas id="telemetryChart"></canvas>
-                    </div>
-                    <div class="d-flex justify-content-center align-items-center gap-3 mt-2 font-mono small" style="font-size: 0.72rem;">
-                        <span class="d-flex align-items-center gap-1 text-cyan">
-                            <span style="display:inline-block; width: 10px; height: 10px; background: #06b6d4; border-radius: 2px;"></span> Download (Rx)
-                        </span>
-                        <span class="d-flex align-items-center gap-1" style="color: #c084fc;">
-                            <span style="display:inline-block; width: 10px; height: 10px; background: #a855f7; border-radius: 2px;"></span> Upload (Tx)
-                        </span>
-                    </div>
-                </div>
-
                 <!-- STATUS ADVISORY & LOGS -->
                 <div class="p-3 rounded-3" style="background: rgba(15, 23, 42, 0.5); border: 1px dashed rgba(255, 255, 255, 0.1);">
                     <div class="d-flex align-items-center gap-2 mb-1">
@@ -675,15 +757,21 @@
 
     </main>
 
-    <!-- LIVE TELEMETRY LOGIC & CHART SCRIPT -->
+    <!-- LIVE TELEMETRY LOGIC & MULTI-RANGE CHART SCRIPT -->
     <script>
         // Configuration
         const REFRESH_INTERVAL_SEC = 5;
         let countdown = REFRESH_INTERVAL_SEC;
         let selectedSite = '';
+        let currentRange = '1d';
         let audioAlertEnabled = false;
         let prevOfflineCount = 0;
         let prevLosCount = 0;
+
+        // Auto-Cycle state for TV
+        let autoCycleTimer = null;
+        let autoCycleIndex = 0;
+        const availableSites = ['', {% for s in sites %}'{{ s }}',{% endfor %}];
 
         // Digital Clock Live
         function updateNocClock() {
@@ -701,7 +789,7 @@
         setInterval(updateNocClock, 1000);
         updateNocClock();
 
-        // Web Audio API Beep Synthesizer (No external file required)
+        // Web Audio API Beep Synthesizer
         function playNocAlertTone() {
             if (!audioAlertEnabled) return;
             try {
@@ -710,8 +798,8 @@
                 const gain = audioCtx.createGain();
 
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Tone 1: 880Hz
-                osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.35); // Drop to 440Hz
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.35);
 
                 gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
                 gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
@@ -735,7 +823,7 @@
                 btn.classList.add('active');
                 icon.className = 'bi bi-bell-fill text-warning';
                 txt.innerText = 'Aktif';
-                playNocAlertTone(); // sample test beep
+                playNocAlertTone();
             } else {
                 btn.classList.remove('active');
                 icon.className = 'bi bi-bell-slash';
@@ -760,7 +848,7 @@
         }
 
         // Site Filter
-        function setSiteFilter(site) {
+        function setSiteFilter(site, btnEl) {
             selectedSite = site;
             const cards = document.querySelectorAll('.device-card-col');
             let visible = 0;
@@ -776,58 +864,83 @@
 
             // Active button state
             document.querySelectorAll('#siteFilterGroup button').forEach(b => b.classList.remove('active'));
-            if (!site) {
+            if (btnEl) {
+                btnEl.classList.add('active');
+            } else if (!site) {
                 document.getElementById('btnSiteAll').classList.add('active');
+            }
+
+            // Reload history when site filter changes
+            reloadHistory();
+        }
+
+        // Auto-Cycle Toggle for TV Screens (every 15s)
+        function toggleAutoCycle() {
+            const btn = document.getElementById('btnAutoCycle');
+            const icon = document.getElementById('cycleIcon');
+            const txt = document.getElementById('autoCycleState');
+
+            if (autoCycleTimer) {
+                clearInterval(autoCycleTimer);
+                autoCycleTimer = null;
+                btn.classList.remove('active');
+                txt.innerText = 'Off';
             } else {
-                event.target.classList.add('active');
+                btn.classList.add('active');
+                txt.innerText = 'On (15s)';
+                autoCycleTimer = setInterval(() => {
+                    autoCycleIndex = (autoCycleIndex + 1) % availableSites.length;
+                    const nextSite = availableSites[autoCycleIndex];
+                    const siteButtons = document.querySelectorAll('#siteFilterGroup button');
+                    const targetBtn = siteButtons[autoCycleIndex] || document.getElementById('btnSiteAll');
+                    setSiteFilter(nextSite, targetBtn);
+                }, 15000);
             }
         }
 
-        // Initialize Real-time Chart.js
+        // Initialize Real-time & Historical Chart.js
         const ctx = document.getElementById('telemetryChart').getContext('2d');
-        const chartLabels = Array(20).fill('');
-        const chartRxData = Array(20).fill(0);
-        const chartTxData = Array(20).fill(0);
-
-        const gradientRx = ctx.createLinearGradient(0, 0, 0, 180);
-        gradientRx.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
+        const gradientRx = ctx.createLinearGradient(0, 0, 0, 200);
+        gradientRx.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
         gradientRx.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
 
-        const gradientTx = ctx.createLinearGradient(0, 0, 0, 180);
-        gradientTx.addColorStop(0, 'rgba(168, 85, 247, 0.35)');
+        const gradientTx = ctx.createLinearGradient(0, 0, 0, 200);
+        gradientTx.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
         gradientTx.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
 
         const telemetryChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: chartLabels,
+                labels: [],
                 datasets: [
                     {
-                        label: 'Download (Mbps)',
-                        data: chartRxData,
+                        label: 'Download',
+                        data: [],
                         borderColor: '#06b6d4',
                         backgroundColor: gradientRx,
                         borderWidth: 2,
                         tension: 0.35,
                         fill: true,
-                        pointRadius: 0
+                        pointRadius: 1,
+                        pointHoverRadius: 5
                     },
                     {
-                        label: 'Upload (Mbps)',
-                        data: chartTxData,
+                        label: 'Upload',
+                        data: [],
                         borderColor: '#a855f7',
                         backgroundColor: gradientTx,
                         borderWidth: 2,
                         tension: 0.35,
                         fill: true,
-                        pointRadius: 0
+                        pointRadius: 1,
+                        pointHoverRadius: 5
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 400 },
+                animation: { duration: 450 },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -835,25 +948,83 @@
                         intersect: false,
                         backgroundColor: 'rgba(15, 23, 42, 0.95)',
                         titleFont: { family: 'JetBrains Mono' },
-                        bodyFont: { family: 'JetBrains Mono' }
+                        bodyFont: { family: 'JetBrains Mono' },
+                        callbacks: {
+                            label: function(ctx) {
+                                return ` ${ctx.dataset.label}: ${ctx.parsed.y} Mbps`;
+                            }
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        display: false
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: {
+                            color: '#64748b',
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 8
+                        }
                     },
                     y: {
                         grid: { color: 'rgba(255, 255, 255, 0.05)' },
                         ticks: {
                             color: '#64748b',
                             font: { family: 'JetBrains Mono', size: 10 },
-                            callback: v => v + ' M'
+                            callback: function(v) {
+                                if (v >= 1000) return (v / 1000).toFixed(1) + 'G';
+                                return v + 'M';
+                            }
                         },
                         beginAtZero: true
                     }
                 }
             }
         });
+
+        // Change History Range (Live, 1d, 3d, 7d, 30d)
+        function changeHistoryRange(range, btnEl) {
+            currentRange = range;
+            document.querySelectorAll('#historyRangeGroup button').forEach(b => b.classList.remove('active'));
+            if (btnEl) btnEl.classList.add('active');
+
+            const badge = document.getElementById('chartRangeBadge');
+            const mapLabel = {
+                'live': 'Live Real-Time (5s)',
+                '1d': '24 Jam Terakhir',
+                '3d': '3 Hari Terakhir',
+                '7d': 'Seminggu (7 Hari)',
+                '30d': '30 Hari Terakhir'
+            };
+            badge.innerText = mapLabel[range] || range;
+
+            reloadHistory();
+        }
+
+        // Fetch Historical Data from API
+        async function reloadHistory() {
+            try {
+                const devSelect = document.getElementById('chartDeviceSelect');
+                const devId = devSelect ? devSelect.value : '';
+                const url = `/api/nms/public/history?range=${currentRange}&device_id=${devId}&site=${encodeURIComponent(selectedSite)}`;
+                
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                telemetryChart.data.labels = data.labels || [];
+                telemetryChart.data.datasets[0].data = data.rx || [];
+                telemetryChart.data.datasets[1].data = data.tx || [];
+                telemetryChart.update();
+
+                document.getElementById('histPeakVal').innerText = data.max_display || '-';
+                document.getElementById('histAvgVal').innerText = data.avg_display || '-';
+                document.getElementById('histVolumeVal').innerText = data.volume_display || '-';
+            } catch (err) {
+                console.error("Error loading traffic history:", err);
+            }
+        }
 
         // Telemetry Poller
         async function fetchTelemetry() {
@@ -898,14 +1069,16 @@
                         thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>Kondisi Termal Normal`;
                     }
 
-                    // Push to Live Chart
-                    chartRxData.shift();
-                    chartRxData.push(stats.total_rx_mbps);
-                    chartTxData.shift();
-                    chartTxData.push(stats.total_tx_mbps);
-                    chartLabels.shift();
-                    chartLabels.push(new Date().toLocaleTimeString('id-ID'));
-                    telemetryChart.update();
+                    // If currently on "live" range, push latest point smoothly
+                    if (currentRange === 'live') {
+                        telemetryChart.data.labels.shift();
+                        telemetryChart.data.labels.push(new Date().toLocaleTimeString('id-ID'));
+                        telemetryChart.data.datasets[0].data.shift();
+                        telemetryChart.data.datasets[0].data.push(stats.total_rx_mbps);
+                        telemetryChart.data.datasets[1].data.shift();
+                        telemetryChart.data.datasets[1].data.push(stats.total_tx_mbps);
+                        telemetryChart.update();
+                    }
                 }
 
                 // 2. Update SFP Stats
@@ -1038,8 +1211,11 @@
             ring.style.strokeDashoffset = 60 - offset;
         }, 1000);
 
-        // First initial fetch after 1 second
-        setTimeout(fetchTelemetry, 1000);
+        // First initial fetch & load default history (1 Hari)
+        setTimeout(() => {
+            fetchTelemetry();
+            reloadHistory();
+        }, 800);
     </script>
 </body>
 </html>

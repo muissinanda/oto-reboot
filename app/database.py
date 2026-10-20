@@ -138,6 +138,21 @@ class DeviceInterface(Base):
 
     device = relationship("NetworkDevice", back_populates="interfaces")
 
+class NetworkTrafficHistory(Base):
+    __tablename__ = "network_traffic_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("network_devices.id", ondelete="CASCADE"), index=True, nullable=True)
+    site = Column(String(100), default="Fasilkom", index=True)
+    timestamp = Column(DateTime, default=now_wib, index=True)
+    rx_mbps = Column(Float, default=0.0)
+    tx_mbps = Column(Float, default=0.0)
+    total_mbps = Column(Float, default=0.0)
+    cpu_usage = Column(Float, nullable=True)
+    temperature = Column(Float, nullable=True)
+
+    device = relationship("NetworkDevice")
+
 import hashlib
 import secrets
 
