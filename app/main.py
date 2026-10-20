@@ -16,7 +16,8 @@ from app.database import (
     init_db, get_db, SessionLocal,
     AccessPoint, RebootSchedule, RebootLog, AppSetting, User,
     NetworkDevice, DeviceInterface,
-    get_setting, set_setting, hash_password, verify_password
+    get_setting, set_setting, hash_password, verify_password,
+    now_wib
 )
 from app.seed import seed_initial_aps
 from app.scheduler import setup_scheduler, reload_scheduler_jobs, execute_scheduled_reboot
@@ -606,6 +607,195 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
                 "total_traffic_display": fleet_bit_str,
                 "total_traffic_byte": fleet_byte_str
             }
+        }
+    )
+
+def get_nms_telemetry_payload(db: Session):
+    """Mengumpulkan metrik live seluruh fleet untuk Wallboard NOC tanpa perlu autentikasi"""
+    devices = db.query(NetworkDevice).order_by(NetworkDevice.site, NetworkDevice.name).all()
+    
+    total_devices = len(devices)
+    online_devices = sum(1 for d in devices if d.is_online)
+    offline_devices = total_devices - online_devices
+    hot_devices = sum(1 for d in devices if d.temperature and d.temperature >= 55.0)
+    
+    total_network_traffic_mbps = 0.0
+    total_network_rx_mbps = 0.0
+    total_network_tx_mbps = 0.0
+    
+    devices_data = []
+    all_interfaces = []
+    sfp_links = []
+    
+    def format_speed_str(mbps: float):
+        if not mbps or mbps <= 0:
+            return "0.00 Mbps", "0 KB/s"
+        bytes_sec = (mbps * 1_000_000) / 8.0
+        if bytes_sec >= 1024 * 1024 * 1024:
+            byte_str = f"{bytes_sec / (1024 * 1024 * 1024):.2f} GB/s"
+        elif bytes_sec >= 1024 * 1024:
+            byte_str = f"{bytes_sec / (1024 * 1024):.1f} MB/s"
+        else:
+            byte_str = f"{bytes_sec / 1024:.0f} KB/s"
+            
+        if mbps >= 1000:
+            bit_str = f"{mbps / 1000.0:.2f} Gbps"
+        elif mbps < 1:
+            bit_str = f"{mbps * 1000:.0f} Kbps"
+        else:
+            bit_str = f"{mbps:.2f} Mbps"
+        return bit_str, byte_str
+
+    for d in devices:
+        total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in d.interfaces)
+        total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in d.interfaces)
+        total_bw = total_rx + total_tx
+        
+        total_network_traffic_mbps += total_bw
+        total_network_rx_mbps += total_rx
+        total_network_tx_mbps += total_tx
+        
+        top_iface_str = None
+        if d.interfaces:
+            sorted_ifaces = sorted(d.interfaces, key=lambda x: (x.rx_rate_mbps or 0) + (x.tx_rate_mbps or 0), reverse=True)
+            if sorted_ifaces:
+                top_item = sorted_ifaces[0]
+                top_rate = (top_item.rx_rate_mbps or 0) + (top_item.tx_rate_mbps or 0)
+                if top_rate > 0:
+                    top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
+                    top_iface_str = f"{top_item.name} ({top_rate_label})"
+
+            for iface in d.interfaces:
+                rate = (iface.rx_rate_mbps or 0.0) + (iface.tx_rate_mbps or 0.0)
+                all_interfaces.append({
+                    "device_id": d.id,
+                    "device_name": d.name,
+                    "site": d.site,
+                    "name": iface.name,
+                    "alias": iface.alias or "-",
+                    "if_type": iface.if_type or "ethernet",
+                    "port_speed": iface.port_speed or "-",
+                    "is_sfp": bool(iface.is_sfp),
+                    "sfp_rx_power": iface.sfp_rx_power,
+                    "sfp_rx_loss": bool(iface.sfp_rx_loss),
+                    "rx_rate_mbps": round(iface.rx_rate_mbps or 0.0, 2),
+                    "tx_rate_mbps": round(iface.tx_rate_mbps or 0.0, 2),
+                    "total_rate_mbps": round(rate, 2),
+                    "rx_display": format_speed_str(iface.rx_rate_mbps or 0.0)[0],
+                    "tx_display": format_speed_str(iface.tx_rate_mbps or 0.0)[0],
+                    "total_display": format_speed_str(rate)[0]
+                })
+                if iface.is_sfp:
+                    sfp_links.append(iface)
+
+        rx_bit_str, rx_byte_str = format_speed_str(total_rx)
+        tx_bit_str, tx_byte_str = format_speed_str(total_tx)
+        tot_bit_str, tot_byte_str = format_speed_str(total_bw)
+
+        rx_pct = round((total_rx / total_bw) * 100, 1) if total_bw > 0 else 50
+        tx_pct = round(100 - rx_pct, 1) if total_bw > 0 else 50
+
+        devices_data.append({
+            "id": d.id,
+            "name": d.name,
+            "ip": d.ip,
+            "device_type": d.device_type,
+            "snmp_version": d.snmp_version,
+            "snmp_port": d.snmp_port,
+            "site": d.site or "Default",
+            "is_online": d.is_online,
+            "uptime": d.uptime or "-",
+            "cpu_usage": d.cpu_usage,
+            "memory_usage": d.memory_usage,
+            "memory_used_mb": d.memory_used_mb,
+            "temperature": d.temperature,
+            "voltage": d.voltage,
+            "model_info": d.model_info or "Belum dipoll",
+            "total_rx_mbps": round(total_rx, 2),
+            "total_tx_mbps": round(total_tx, 2),
+            "total_bw_mbps": round(total_bw, 2),
+            "rx_display": rx_bit_str,
+            "rx_byte_display": rx_byte_str,
+            "tx_display": tx_bit_str,
+            "tx_byte_display": tx_byte_str,
+            "total_display": tot_bit_str,
+            "total_byte_display": tot_byte_str,
+            "rx_percent": rx_pct,
+            "tx_percent": tx_pct,
+            "top_interface": top_iface_str,
+            "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "-"
+        })
+
+    top_interfaces = sorted(all_interfaces, key=lambda x: x["total_rate_mbps"], reverse=True)[:8]
+
+    sfp_los_count = sum(1 for s in sfp_links if s.sfp_rx_loss)
+    sfp_good_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and s.sfp_rx_power >= -18.0 and not s.sfp_rx_loss)
+    sfp_normal_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and -23.0 <= s.sfp_rx_power < -18.0 and not s.sfp_rx_loss)
+    sfp_warning_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and -27.0 <= s.sfp_rx_power < -23.0 and not s.sfp_rx_loss)
+    sfp_critical_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and s.sfp_rx_power < -27.0 and not s.sfp_rx_loss)
+
+    fleet_tot_bit, fleet_tot_byte = format_speed_str(total_network_traffic_mbps)
+    fleet_rx_bit, fleet_rx_byte = format_speed_str(total_network_rx_mbps)
+    fleet_tx_bit, fleet_tx_byte = format_speed_str(total_network_tx_mbps)
+
+    valid_cpus = [d.cpu_usage for d in devices if d.cpu_usage is not None]
+    avg_cpu = round(sum(valid_cpus) / len(valid_cpus), 1) if valid_cpus else 0.0
+
+    valid_mems = [d.memory_usage for d in devices if d.memory_usage is not None]
+    avg_mem = round(sum(valid_mems) / len(valid_mems), 1) if valid_mems else 0.0
+
+    valid_temps = [d.temperature for d in devices if d.temperature is not None]
+    max_temp = round(max(valid_temps), 1) if valid_temps else None
+
+    sites = sorted(list(set(d["site"] for d in devices_data if d["site"])))
+
+    return {
+        "stats": {
+            "total_devices": total_devices,
+            "online_devices": online_devices,
+            "offline_devices": offline_devices,
+            "hot_devices": hot_devices,
+            "total_traffic_mbps": round(total_network_traffic_mbps, 2),
+            "total_traffic_display": fleet_tot_bit,
+            "total_traffic_byte": fleet_tot_byte,
+            "total_rx_mbps": round(total_network_rx_mbps, 2),
+            "total_rx_display": fleet_rx_bit,
+            "total_rx_byte": fleet_rx_byte,
+            "total_tx_mbps": round(total_network_tx_mbps, 2),
+            "total_tx_display": fleet_tx_bit,
+            "total_tx_byte": fleet_tx_byte,
+            "avg_cpu": avg_cpu,
+            "avg_mem": avg_mem,
+            "max_temp": max_temp,
+            "timestamp": now_wib().strftime('%H:%M:%S WIB')
+        },
+        "sfp_summary": {
+            "total_sfp": len(sfp_links),
+            "los_count": sfp_los_count,
+            "good_count": sfp_good_count,
+            "normal_count": sfp_normal_count,
+            "warning_count": sfp_warning_count,
+            "critical_count": sfp_critical_count
+        },
+        "devices": devices_data,
+        "top_interfaces": top_interfaces,
+        "sites": sites
+    }
+
+@app.get("/noc", response_class=HTMLResponse)
+@app.get("/nms/wallboard", response_class=HTMLResponse)
+async def page_noc_wallboard(request: Request, db: Session = Depends(get_db)):
+    """Dashboard Public Wallboard NOC untuk tampilan monitor besar / TV tanpa password"""
+    telemetry = get_nms_telemetry_payload(db)
+    return templates.TemplateResponse(
+        request=request,
+        name="noc_wallboard.html",
+        context={
+            "stats": telemetry["stats"],
+            "sfp_summary": telemetry["sfp_summary"],
+            "devices": telemetry["devices"],
+            "top_interfaces": telemetry["top_interfaces"],
+            "sites": telemetry["sites"]
         }
     )
 
@@ -1326,3 +1516,8 @@ async def api_get_device_interfaces(device_id: int, request: Request, db: Sessio
         },
         "interfaces": data
     }
+
+@app.get("/api/nms/public/telemetry")
+async def api_public_telemetry(db: Session = Depends(get_db)):
+    """Endpoint telemetri live publik (tanpa login) untuk Wallboard NOC"""
+    return get_nms_telemetry_payload(db)

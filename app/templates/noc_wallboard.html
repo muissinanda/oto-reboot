@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="id" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOC Live Wallboard - Network Operations Center</title>
+    
+    <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5 & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <!-- Chart.js for High-Tech Realtime Telemetry Graph -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <style>
+        :root {
+            --bg-deep: #060911;
+            --bg-card: rgba(13, 20, 36, 0.72);
+            --bg-card-hover: rgba(18, 28, 51, 0.85);
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --border-glow-cyan: rgba(6, 182, 212, 0.4);
+            --neon-cyan: #06b6d4;
+            --neon-emerald: #10b981;
+            --neon-purple: #a855f7;
+            --neon-amber: #f59e0b;
+            --neon-rose: #f43f5e;
+            --neon-blue: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-deep);
+            color: #f1f5f9;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.12) 0px, transparent 40%),
+                radial-gradient(circle at 90% 15%, rgba(6, 182, 212, 0.1) 0px, transparent 40%),
+                radial-gradient(circle at 50% 90%, rgba(168, 85, 247, 0.08) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Ambient scanline & grid effects for NOC */
+        .noc-grid-overlay {
+            background-image: linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
+
+        /* Glassmorphic Cards */
+        .glass-panel {
+            background: var(--bg-card);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid var(--border-glass);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all 0.25s ease;
+        }
+        .glass-panel:hover {
+            border-color: rgba(255, 255, 255, 0.14);
+        }
+
+        /* Live Pulsing Dot */
+        .pulse-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            position: relative;
+        }
+        .pulse-dot.online {
+            background-color: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+        .pulse-dot.online::after {
+            content: '';
+            position: absolute;
+            top: -3px; left: -3px; right: -3px; bottom: -3px;
+            border-radius: 50%;
+            border: 2px solid #10b981;
+            animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        .pulse-dot.offline {
+            background-color: #ef4444;
+            box-shadow: 0 0 10px #ef4444;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.9; }
+            50% { transform: scale(1.7); opacity: 0.3; }
+            100% { transform: scale(2.3); opacity: 0; }
+        }
+
+        /* Glow Text & Badges */
+        .glow-cyan {
+            text-shadow: 0 0 14px rgba(6, 182, 212, 0.6);
+            color: #22d3ee;
+        }
+        .glow-emerald {
+            text-shadow: 0 0 14px rgba(16, 185, 129, 0.6);
+            color: #34d399;
+        }
+        .glow-purple {
+            text-shadow: 0 0 14px rgba(168, 85, 247, 0.6);
+            color: #c084fc;
+        }
+
+        /* Circular Sync Progress */
+        .sync-ring {
+            position: relative;
+            width: 24px;
+            height: 24px;
+        }
+        .sync-ring svg {
+            transform: rotate(-90deg);
+        }
+        .sync-ring circle {
+            fill: none;
+            stroke-width: 3;
+            stroke-dasharray: 60;
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 1s linear;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(6, 182, 212, 0.4);
+        }
+
+        /* Fullscreen Button & Controls */
+        .btn-noc {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+            font-size: 0.8rem;
+            padding: 5px 12px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .btn-noc:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .btn-noc.active {
+            background: rgba(6, 182, 212, 0.2);
+            border-color: rgba(6, 182, 212, 0.4);
+            color: #22d3ee;
+        }
+
+        /* Progress Split */
+        .split-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+            overflow: hidden;
+            display: flex;
+        }
+        .split-dl {
+            background: linear-gradient(90deg, #0891b2, #06b6d4);
+            box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+            transition: width 0.6s ease;
+        }
+        .split-ul {
+            background: linear-gradient(90deg, #9333ea, #a855f7);
+            box-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+            transition: width 0.6s ease;
+        }
+
+        /* Alert Banner */
+        .noc-alert-banner {
+            display: none;
+            background: linear-gradient(90deg, rgba(239, 68, 68, 0.25), rgba(185, 28, 28, 0.15));
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            border-radius: 10px;
+            padding: 10px 16px;
+            animation: alert-blink 2s infinite;
+        }
+        @keyframes alert-blink {
+            0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+            50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.7); }
+        }
+    </style>
+</head>
+<body class="noc-grid-overlay">
+
+    <!-- TOP HEADER BAR -->
+    <header class="py-2.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex justify-content-between align-items-center flex-wrap gap-2 sticky-top" style="background: rgba(6, 9, 17, 0.88); backdrop-filter: blur(15px); z-index: 1020;">
+        <!-- Left: Brand & Radar Status -->
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <span class="pulse-dot online"></span>
+                <span class="badge font-mono fw-bold" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.75rem; letter-spacing: 0.05em;">
+                    LIVE NOC MONITOR
+                </span>
+            </div>
+            <div class="vr bg-secondary opacity-25 d-none d-sm-block" style="height: 22px;"></div>
+            <div>
+                <h1 class="h6 mb-0 fw-extrabold text-light tracking-wide d-flex align-items-center gap-1.5" style="letter-spacing: -0.01em;">
+                    <i class="bi bi-broadcast text-info"></i>
+                    <span>NETWORK OPERATIONS CENTER</span>
+                </h1>
+                <div class="text-secondary small font-mono d-none d-md-block" style="font-size: 0.68rem;">
+                    Fleet Real-Time Telemetry & Optical Backbone Monitor
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Big Live Digital Clock -->
+        <div class="text-center order-3 order-lg-2 my-1 my-lg-0 mx-auto">
+            <div class="font-mono fw-extrabold text-light fs-4 lh-1" id="nocClock" style="letter-spacing: 0.05em;">
+                --:--:-- WIB
+            </div>
+            <div class="text-secondary font-mono small mt-0.5" id="nocDate" style="font-size: 0.72rem;">
+                Memuat tanggal...
+            </div>
+        </div>
+
+        <!-- Right: Controls (Site Filter, Sound Alert, Sync Countdown, Fullscreen) -->
+        <div class="d-flex align-items-center gap-2 order-2 order-lg-3 flex-wrap">
+            <!-- Site Tabs -->
+            <div class="btn-group btn-group-sm d-none d-xl-flex" id="siteFilterGroup">
+                <button class="btn btn-noc active" onclick="setSiteFilter('')" id="btnSiteAll">Semua Site</button>
+                {% for s in sites %}
+                    <button class="btn btn-noc" onclick="setSiteFilter('{{ s }}')" id="btnSite{{ loop.index }}">{{ s }}</button>
+                {% endfor %}
+            </div>
+
+            <!-- Audio Alert Toggle -->
+            <button class="btn btn-noc" id="btnAudioToggle" onclick="toggleAudioAlert()" title="Bunyikan suara peringatan jika link putus">
+                <i class="bi bi-bell-slash" id="audioIcon"></i>
+                <span class="d-none d-sm-inline ms-1" id="audioText">Bisu</span>
+            </button>
+
+            <!-- Sync Timer Ring -->
+            <div class="d-flex align-items-center gap-1.5 px-2 py-1 rounded-2" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div class="sync-ring">
+                    <svg width="24" height="24">
+                        <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.1)"></circle>
+                        <circle id="syncRingProgress" cx="12" cy="12" r="9" stroke="#06b6d4"></circle>
+                    </svg>
+                </div>
+                <span class="font-mono text-secondary small" style="font-size: 0.72rem;" id="syncTimerText">5s</span>
+            </div>
+
+            <!-- Fullscreen Toggle -->
+            <button class="btn btn-noc text-info border-info border-opacity-30" onclick="toggleFullscreen()" title="Fullscreen Mode untuk TV">
+                <i class="bi bi-fullscreen" id="fsIcon"></i>
+                <span class="d-none d-sm-inline ms-1">Fullscreen</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- CRITICAL ALERTS BANNER (Hidden by default, shown when LOS or Offline occurs) -->
+    <div class="container-fluid px-3 px-md-4 mt-3">
+        <div class="noc-alert-banner" id="alertBanner">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2 text-danger fw-bold">
+                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    <span id="alertBannerText">PERINGATAN KRITIS: Link Fiber Optik atau Perangkat Mengalami Gangguan!</span>
+                </div>
+                <span class="badge bg-danger font-mono" id="alertBannerCount">0 Incident</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN VIEWPORT CONTAINER -->
+    <main class="container-fluid px-3 px-md-4 py-3">
+        
+        <!-- 4 HERO METRIC WIDGETS -->
+        <div class="row g-3 mb-4">
+            
+            <!-- Widget 1: Total Fleet Traffic -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="text-secondary small fw-medium">TOTAL NETWORK TRAFFIC</div>
+                            <div class="fs-2 fw-extrabold font-mono glow-cyan mt-1" id="statTotalTraffic">
+                                {{ stats.total_traffic_display or '0.00 Mbps' }}
+                            </div>
+                        </div>
+                        <div class="p-2.5 rounded-3" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee;">
+                            <i class="bi bi-activity fs-3"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Breakdown Download / Upload -->
+                    <div class="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top border-light border-opacity-10 font-mono small" style="font-size: 0.78rem;">
+                        <span class="text-cyan">
+                            <i class="bi bi-arrow-down-short"></i> DL: <b id="statTotalRx">{{ stats.total_rx_display or '0.00 Mbps' }}</b>
+                        </span>
+                        <span class="text-secondary">•</span>
+                        <span style="color: #c084fc;">
+                            <i class="bi bi-arrow-up-short"></i> UL: <b id="statTotalTx">{{ stats.total_tx_display or '0.00 Mbps' }}</b>
+                        </span>
+                    </div>
+                    <div class="text-secondary small font-mono mt-1 text-end" style="font-size: 0.68rem;" id="statTotalByte">
+                        Akumulasi: {{ stats.total_traffic_byte or '0 KB/s' }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Widget 2: Fleet Availability & SLA -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="text-secondary small fw-medium">FLEET AVAILABILITY & SLA</div>
+                            <div class="fs-2 fw-extrabold font-mono glow-emerald mt-1" id="statSlaRate">
+                                {% if stats.total_devices > 0 %}
+                                    {{ ((stats.online_devices / stats.total_devices) * 100)|round(1) }}%
+                                {% else %}
+                                    100%
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="p-2.5 rounded-3" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">
+                            <i class="bi bi-shield-check fs-3"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top border-light border-opacity-10 small" style="font-size: 0.78rem;">
+                        <span class="text-success fw-medium font-mono">
+                            <i class="bi bi-check-circle-fill me-1"></i><span id="statOnlineCount">{{ stats.online_devices }}</span> Online
+                        </span>
+                        <span class="font-mono" id="statOfflineBox" style="color: {% if stats.offline_devices > 0 %}#f87171{% else %}#64748b{% endif %};">
+                            <i class="bi bi-x-circle-fill me-1"></i><span id="statOfflineCount">{{ stats.offline_devices }}</span> Offline
+                        </span>
+                    </div>
+                    <div class="text-secondary small font-mono mt-1 text-end" style="font-size: 0.68rem;">
+                        Total Perangkat: <span id="statTotalDevices">{{ stats.total_devices }}</span> Unit
+                    </div>
+                </div>
+            </div>
+
+            <!-- Widget 3: Hardware & Thermal Status -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="text-secondary small fw-medium">THERMAL & HARDWARE HEALTH</div>
+                            <div class="fs-2 fw-extrabold font-mono mt-1 {% if stats.hot_devices > 0 %}text-warning{% else %}text-light{% endif %}" id="statMaxTemp">
+                                {% if stats.max_temp %}{{ stats.max_temp }} °C{% else %}- °C{% endif %}
+                            </div>
+                        </div>
+                        <div class="p-2.5 rounded-3" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                            <i class="bi bi-thermometer-half fs-3"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top border-light border-opacity-10 font-mono small" style="font-size: 0.78rem;">
+                        <span class="text-secondary">
+                            Avg CPU: <b class="text-light" id="statAvgCpu">{{ stats.avg_cpu or 0 }}%</b>
+                        </span>
+                        <span class="text-secondary">•</span>
+                        <span class="text-secondary">
+                            Avg RAM: <b class="text-light" id="statAvgMem">{{ stats.avg_mem or 0 }}%</b>
+                        </span>
+                    </div>
+                    <div class="small font-mono mt-1 text-end" style="font-size: 0.68rem;">
+                        <span class="{% if stats.hot_devices > 0 %}text-warning{% else %}text-success{% endif %}" id="statThermalStatus">
+                            <i class="bi bi-cpu me-1"></i>{% if stats.hot_devices > 0 %}{{ stats.hot_devices }} Perangkat Hangat{% else %}Kondisi Termal Normal{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Widget 4: SFP & Optical Link Status -->
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="text-secondary small fw-medium">SFP OPTICAL BACKBONE (DDM)</div>
+                            <div class="fs-2 fw-extrabold font-mono glow-purple mt-1" id="statSfpCount">
+                                {{ sfp_summary.total_sfp or 0 }} <span class="fs-5 text-secondary fw-normal">Link</span>
+                            </div>
+                        </div>
+                        <div class="p-2.5 rounded-3" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">
+                            <i class="bi bi-optical-audio fs-3"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top border-light border-opacity-10 font-mono small" style="font-size: 0.78rem;">
+                        <span class="text-success">
+                            <i class="bi bi-check-circle me-1"></i><span id="statSfpGood">{{ sfp_summary.good_count + sfp_summary.normal_count }}</span> Normal
+                        </span>
+                        <span class="text-secondary">•</span>
+                        <span id="statSfpLosBox" class="{% if sfp_summary.los_count > 0 %}text-danger fw-bold{% else %}text-secondary{% endif %}">
+                            <i class="bi bi-x-octagon me-1"></i><span id="statSfpLos">{{ sfp_summary.los_count }}</span> LOS (Putus)
+                        </span>
+                    </div>
+                    <div class="text-secondary small font-mono mt-1 text-end" style="font-size: 0.68rem;">
+                        Transceiver DDM Telemetri Aktif
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SPLIT WORKSPACE: LEFT (FLEET CARDS) & RIGHT (TOP BACKBONES & LIVE CHART) -->
+        <div class="row g-3">
+            
+            <!-- LEFT COLUMN: PERANGKAT MONITOR CARDS (TV WALLBOARD GRID) -->
+            <div class="col-12 col-xl-8">
+                <div class="d-flex justify-content-between align-items-center mb-2.5">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-hdd-network text-info fs-5"></i>
+                        <h2 class="h6 mb-0 fw-bold text-light font-mono">STATUS PERANGKAT FLEET</h2>
+                        <span class="badge font-mono" style="background: rgba(255, 255, 255, 0.08); color: #94a3b8;" id="activeDeviceFilterCount">
+                            {{ devices|length }} Unit
+                        </span>
+                    </div>
+                    <div class="text-secondary small font-mono" style="font-size: 0.72rem;">
+                        Auto-Update: <b class="text-light">5s</b>
+                    </div>
+                </div>
+
+                <div class="row g-3" id="devicesCardGrid">
+                    {% for d in devices %}
+                    <div class="col-12 col-md-6 device-card-col" data-site="{{ d.site }}">
+                        <div class="glass-panel p-3 h-100 border-start border-3 {% if d.is_online %}border-success{% else %}border-danger{% endif %}">
+                            
+                            <!-- Card Header: Name, Type, Site, Status -->
+                            <div class="d-flex justify-content-between align-items-start mb-2.5">
+                                <div class="d-flex align-items-center gap-2.5">
+                                    <div class="p-2 rounded-2" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1;">
+                                        {% if d.device_type == 'mikrotik' %}
+                                            <i class="bi bi-hdd-network text-info fs-4"></i>
+                                        {% elif d.device_type == 'access_point' %}
+                                            <i class="bi bi-router text-warning fs-4"></i>
+                                        {% else %}
+                                            <i class="bi bi-ethernet text-primary fs-4"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        <div class="fw-extrabold text-light fs-5 lh-1 text-truncate" style="max-width: 220px;" title="{{ d.name }}">{{ d.name }}</div>
+                                        <div class="text-secondary font-mono small text-truncate mt-1" style="font-size: 0.72rem; max-width: 220px;" title="{{ d.model_info }}">{{ d.model_info }}</div>
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    {% if d.is_online %}
+                                        <span class="badge font-mono" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.75rem; padding: 4px 8px;">
+                                            ● ONLINE
+                                        </span>
+                                    {% else %}
+                                        <span class="badge font-mono" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 0.75rem; padding: 4px 8px;">
+                                            ● OFFLINE
+                                        </span>
+                                    {% endif %}
+                                    <div class="mt-1">
+                                        <span class="badge" style="background: rgba(255, 255, 255, 0.06); color: #cbd5e1; font-size: 0.68rem;">
+                                            <i class="bi bi-geo-alt me-0.5 text-secondary"></i>{{ d.site }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- IP & SNMP Bar -->
+                            <div class="d-flex justify-content-between align-items-center py-1.5 px-2.5 rounded-2 mb-3 font-mono" style="background: rgba(0, 0, 0, 0.25); font-size: 0.78rem;">
+                                <span class="text-light fw-medium"><i class="bi bi-hdd me-1 text-secondary"></i>{{ d.ip }}</span>
+                                <span class="text-secondary small">SNMP v{{ d.snmp_version }} (Port {{ d.snmp_port }})</span>
+                            </div>
+
+                            <!-- TRAFFIC METERS (HUGE DUAL DISPLAY) -->
+                            <div class="p-3 rounded-3 mb-3" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);">
+                                <div class="row g-2 align-items-center">
+                                    <!-- Download Side -->
+                                    <div class="col-6 border-end border-light border-opacity-10 pe-3">
+                                        <div class="d-flex align-items-center gap-1.5 mb-1">
+                                            <span class="badge" style="background: rgba(6, 182, 212, 0.2); color: #22d3ee; font-size: 0.68rem; padding: 2px 6px;">
+                                                <i class="bi bi-arrow-down"></i> DL
+                                            </span>
+                                            <span class="text-secondary small font-mono" style="font-size: 0.7rem;">Download</span>
+                                        </div>
+                                        <div class="fs-4 fw-extrabold font-mono text-cyan lh-1" id="devRx_{{ d.id }}">
+                                            {{ d.rx_display }}
+                                        </div>
+                                        <div class="text-secondary font-mono small mt-1" style="font-size: 0.72rem;" id="devRxByte_{{ d.id }}">
+                                            {{ d.rx_byte_display }}
+                                        </div>
+                                    </div>
+
+                                    <!-- Upload Side -->
+                                    <div class="col-6 ps-3">
+                                        <div class="d-flex align-items-center gap-1.5 mb-1">
+                                            <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.68rem; padding: 2px 6px;">
+                                                <i class="bi bi-arrow-up"></i> UL
+                                            </span>
+                                            <span class="text-secondary small font-mono" style="font-size: 0.7rem;">Upload</span>
+                                        </div>
+                                        <div class="fs-4 fw-extrabold font-mono lh-1" style="color: #d8b4fe;" id="devTx_{{ d.id }}">
+                                            {{ d.tx_display }}
+                                        </div>
+                                        <div class="text-secondary font-mono small mt-1" style="font-size: 0.72rem;" id="devTxByte_{{ d.id }}">
+                                            {{ d.tx_byte_display }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Dynamic Split Ratio Bar -->
+                                <div class="split-bar mt-3">
+                                    <div class="split-dl" id="devBarDl_{{ d.id }}" style="width: {{ d.rx_percent }}%;"></div>
+                                    <div class="split-ul" id="devBarUl_{{ d.id }}" style="width: {{ d.tx_percent }}%;"></div>
+                                </div>
+
+                                <!-- Traffic Footer -->
+                                <div class="d-flex justify-content-between align-items-center mt-2 text-secondary font-mono small" style="font-size: 0.7rem;">
+                                    <span>Total: <strong class="text-light" id="devTot_{{ d.id }}">{{ d.total_display }}</strong></span>
+                                    {% if d.top_interface %}
+                                        <span class="text-truncate ms-2" style="max-width: 170px;" title="Top: {{ d.top_interface }}">
+                                            <i class="bi bi-activity text-info me-0.5"></i><b class="text-light">{{ d.top_interface }}</b>
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <!-- Hardware Telemetry Bottom Row (CPU, RAM, Temp, Uptime) -->
+                            <div class="row g-2 text-secondary font-mono small" style="font-size: 0.75rem;">
+                                <div class="col-3">
+                                    <div class="p-2 rounded-2 text-center" style="background: rgba(255, 255, 255, 0.03);">
+                                        <div class="text-secondary" style="font-size: 0.65rem;">CPU</div>
+                                        <div class="fw-bold mt-0.5 {% if d.cpu_usage and d.cpu_usage > 80 %}text-danger{% elif d.cpu_usage and d.cpu_usage > 50 %}text-warning{% else %}text-success{% endif %}" id="devCpu_{{ d.id }}">
+                                            {% if d.cpu_usage is not none %}{{ d.cpu_usage }}%{% else %}-{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <div class="p-2 rounded-2 text-center" style="background: rgba(255, 255, 255, 0.03);">
+                                        <div class="text-secondary" style="font-size: 0.65rem;">RAM</div>
+                                        <div class="fw-bold text-info mt-0.5" id="devMem_{{ d.id }}">
+                                            {% if d.memory_usage is not none %}{{ d.memory_usage }}%{% else %}-{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <div class="p-2 rounded-2 text-center" style="background: rgba(255, 255, 255, 0.03);">
+                                        <div class="text-secondary" style="font-size: 0.65rem;">SUHU</div>
+                                        <div class="fw-bold mt-0.5 {% if d.temperature and d.temperature >= 65 %}text-danger{% elif d.temperature and d.temperature >= 55 %}text-warning{% else %}text-light{% endif %}" id="devTemp_{{ d.id }}">
+                                            {% if d.temperature is not none %}{{ d.temperature }}°C{% else %}-{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <div class="p-2 rounded-2 text-center" style="background: rgba(255, 255, 255, 0.03);">
+                                        <div class="text-secondary" style="font-size: 0.65rem;">UPTIME</div>
+                                        <div class="fw-bold text-light mt-0.5 text-truncate" style="font-size: 0.7rem;" id="devUptime_{{ d.id }}" title="{{ d.uptime }}">
+                                            {{ d.uptime }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: LIVE FLOW CHART & TOP BACKBONES LEADERBOARD -->
+            <div class="col-12 col-xl-4">
+                
+                <!-- TOP BACKBONE INTERFACES LEADERBOARD -->
+                <div class="glass-panel p-3 mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-speedometer2 text-warning fs-5"></i>
+                            <h2 class="h6 mb-0 fw-bold text-light font-mono">TOP TRAFFIC & BACKBONE</h2>
+                        </div>
+                        <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-size: 0.68rem;">
+                            Live Peak
+                        </span>
+                    </div>
+
+                    <div class="d-flex flex-column gap-2" id="topInterfacesList">
+                        {% for iface in top_interfaces %}
+                        <div class="p-2.5 rounded-2 d-flex justify-content-between align-items-center" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div>
+                                <div class="d-flex align-items-center gap-1.5">
+                                    <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;">
+                                        {{ iface.name }}
+                                    </span>
+                                    {% if iface.port_speed and iface.port_speed != '-' %}
+                                        <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; font-size: 0.65rem;">
+                                            {{ iface.port_speed }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                <div class="text-secondary small font-mono mt-1 text-truncate" style="max-width: 170px; font-size: 0.7rem;" title="{{ iface.alias }}">
+                                    {{ iface.alias or iface.device_name }}
+                                </div>
+                            </div>
+                            <div class="text-end font-mono">
+                                <div class="fw-bold text-light" style="font-size: 0.85rem;">{{ iface.total_display }}</div>
+                                <div class="d-flex align-items-center justify-content-end gap-1 small mt-0.5" style="font-size: 0.68rem;">
+                                    <span class="text-cyan">↓ {{ iface.rx_display }}</span>
+                                    <span class="text-secondary">|</span>
+                                    <span style="color: #c084fc;">↑ {{ iface.tx_display }}</span>
+                                </div>
+                                {% if iface.is_sfp and iface.sfp_rx_power %}
+                                    <div class="text-success small mt-0.5" style="font-size: 0.65rem;">
+                                        <i class="bi bi-optical-audio me-0.5"></i>{{ iface.sfp_rx_power|round(2) }} dBm
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- REAL-TIME TELEMETRY STREAM CHART -->
+                <div class="glass-panel p-3 mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-graph-up-arrow text-info"></i>
+                            <h2 class="h6 mb-0 fw-bold text-light font-mono">LIVE THROUGHPUT STREAM</h2>
+                        </div>
+                        <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;">
+                            Mbps (30 Point)
+                        </span>
+                    </div>
+                    <div style="height: 190px;">
+                        <canvas id="telemetryChart"></canvas>
+                    </div>
+                    <div class="d-flex justify-content-center align-items-center gap-3 mt-2 font-mono small" style="font-size: 0.72rem;">
+                        <span class="d-flex align-items-center gap-1 text-cyan">
+                            <span style="display:inline-block; width: 10px; height: 10px; background: #06b6d4; border-radius: 2px;"></span> Download (Rx)
+                        </span>
+                        <span class="d-flex align-items-center gap-1" style="color: #c084fc;">
+                            <span style="display:inline-block; width: 10px; height: 10px; background: #a855f7; border-radius: 2px;"></span> Upload (Tx)
+                        </span>
+                    </div>
+                </div>
+
+                <!-- STATUS ADVISORY & LOGS -->
+                <div class="p-3 rounded-3" style="background: rgba(15, 23, 42, 0.5); border: 1px dashed rgba(255, 255, 255, 0.1);">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <i class="bi bi-shield-check text-success"></i>
+                        <span class="text-light fw-bold small">SISTEM MONITORING OTO REBOOT</span>
+                    </div>
+                    <div class="text-secondary small font-mono" style="font-size: 0.72rem; line-height: 1.5;">
+                        Dashboard NOC ini berjalan publik tanpa autentikasi untuk display monitor umum. Polling background aktif setiap 5 detik secara otomatis.
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- LIVE TELEMETRY LOGIC & CHART SCRIPT -->
+    <script>
+        // Configuration
+        const REFRESH_INTERVAL_SEC = 5;
+        let countdown = REFRESH_INTERVAL_SEC;
+        let selectedSite = '';
+        let audioAlertEnabled = false;
+        let prevOfflineCount = 0;
+        let prevLosCount = 0;
+
+        // Digital Clock Live
+        function updateNocClock() {
+            const now = new Date();
+            const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+            const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('nocClock').innerText = `${hours}:${minutes}:${seconds} WIB`;
+            document.getElementById('nocDate').innerText = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+        }
+        setInterval(updateNocClock, 1000);
+        updateNocClock();
+
+        // Web Audio API Beep Synthesizer (No external file required)
+        function playNocAlertTone() {
+            if (!audioAlertEnabled) return;
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Tone 1: 880Hz
+                osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.35); // Drop to 440Hz
+
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.35);
+            } catch (e) {
+                console.error("Audio synth error:", e);
+            }
+        }
+
+        function toggleAudioAlert() {
+            audioAlertEnabled = !audioAlertEnabled;
+            const btn = document.getElementById('btnAudioToggle');
+            const icon = document.getElementById('audioIcon');
+            const txt = document.getElementById('audioText');
+            if (audioAlertEnabled) {
+                btn.classList.add('active');
+                icon.className = 'bi bi-bell-fill text-warning';
+                txt.innerText = 'Aktif';
+                playNocAlertTone(); // sample test beep
+            } else {
+                btn.classList.remove('active');
+                icon.className = 'bi bi-bell-slash';
+                txt.innerText = 'Bisu';
+            }
+        }
+
+        // Fullscreen Toggle
+        function toggleFullscreen() {
+            const fsIcon = document.getElementById('fsIcon');
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error entering fullscreen: ${err.message}`);
+                });
+                fsIcon.className = "bi bi-fullscreen-exit";
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                    fsIcon.className = "bi bi-fullscreen";
+                }
+            }
+        }
+
+        // Site Filter
+        function setSiteFilter(site) {
+            selectedSite = site;
+            const cards = document.querySelectorAll('.device-card-col');
+            let visible = 0;
+            cards.forEach(card => {
+                if (!site || card.dataset.site === site) {
+                    card.style.display = 'block';
+                    visible++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            document.getElementById('activeDeviceFilterCount').innerText = `${visible} Unit`;
+
+            // Active button state
+            document.querySelectorAll('#siteFilterGroup button').forEach(b => b.classList.remove('active'));
+            if (!site) {
+                document.getElementById('btnSiteAll').classList.add('active');
+            } else {
+                event.target.classList.add('active');
+            }
+        }
+
+        // Initialize Real-time Chart.js
+        const ctx = document.getElementById('telemetryChart').getContext('2d');
+        const chartLabels = Array(20).fill('');
+        const chartRxData = Array(20).fill(0);
+        const chartTxData = Array(20).fill(0);
+
+        const gradientRx = ctx.createLinearGradient(0, 0, 0, 180);
+        gradientRx.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
+        gradientRx.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+
+        const gradientTx = ctx.createLinearGradient(0, 0, 0, 180);
+        gradientTx.addColorStop(0, 'rgba(168, 85, 247, 0.35)');
+        gradientTx.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
+
+        const telemetryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    {
+                        label: 'Download (Mbps)',
+                        data: chartRxData,
+                        borderColor: '#06b6d4',
+                        backgroundColor: gradientRx,
+                        borderWidth: 2,
+                        tension: 0.35,
+                        fill: true,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Upload (Mbps)',
+                        data: chartTxData,
+                        borderColor: '#a855f7',
+                        backgroundColor: gradientTx,
+                        borderWidth: 2,
+                        tension: 0.35,
+                        fill: true,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400 },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        titleFont: { family: 'JetBrains Mono' },
+                        bodyFont: { family: 'JetBrains Mono' }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: false
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: {
+                            color: '#64748b',
+                            font: { family: 'JetBrains Mono', size: 10 },
+                            callback: v => v + ' M'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Telemetry Poller
+        async function fetchTelemetry() {
+            try {
+                const res = await fetch('/api/nms/public/telemetry');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // 1. Update Hero Stats
+                const stats = data.stats;
+                if (stats) {
+                    document.getElementById('statTotalTraffic').innerText = stats.total_traffic_display;
+                    document.getElementById('statTotalRx').innerText = stats.total_rx_display;
+                    document.getElementById('statTotalTx').innerText = stats.total_tx_display;
+                    document.getElementById('statTotalByte').innerText = `Akumulasi: ${stats.total_traffic_byte}`;
+
+                    const slaRate = stats.total_devices > 0 ? ((stats.online_devices / stats.total_devices) * 100).toFixed(1) + '%' : '100%';
+                    document.getElementById('statSlaRate').innerText = slaRate;
+                    document.getElementById('statOnlineCount').innerText = stats.online_devices;
+                    document.getElementById('statOfflineCount').innerText = stats.offline_devices;
+                    document.getElementById('statTotalDevices').innerText = stats.total_devices;
+                    
+                    const offlineBox = document.getElementById('statOfflineBox');
+                    if (stats.offline_devices > 0) {
+                        offlineBox.style.color = '#f87171';
+                        offlineBox.className = 'font-mono fw-bold';
+                    } else {
+                        offlineBox.style.color = '#64748b';
+                        offlineBox.className = 'font-mono';
+                    }
+
+                    document.getElementById('statMaxTemp').innerText = stats.max_temp ? `${stats.max_temp} °C` : '- °C';
+                    document.getElementById('statAvgCpu').innerText = `${stats.avg_cpu}%`;
+                    document.getElementById('statAvgMem').innerText = `${stats.avg_mem}%`;
+                    
+                    const thermalStatus = document.getElementById('statThermalStatus');
+                    if (stats.hot_devices > 0) {
+                        thermalStatus.className = 'text-warning';
+                        thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>${stats.hot_devices} Perangkat Hangat`;
+                    } else {
+                        thermalStatus.className = 'text-success';
+                        thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>Kondisi Termal Normal`;
+                    }
+
+                    // Push to Live Chart
+                    chartRxData.shift();
+                    chartRxData.push(stats.total_rx_mbps);
+                    chartTxData.shift();
+                    chartTxData.push(stats.total_tx_mbps);
+                    chartLabels.shift();
+                    chartLabels.push(new Date().toLocaleTimeString('id-ID'));
+                    telemetryChart.update();
+                }
+
+                // 2. Update SFP Stats
+                const sfp = data.sfp_summary;
+                if (sfp) {
+                    document.getElementById('statSfpCount').innerHTML = `${sfp.total_sfp} <span class="fs-5 text-secondary fw-normal">Link</span>`;
+                    document.getElementById('statSfpGood').innerText = sfp.good_count + sfp.normal_count;
+                    document.getElementById('statSfpLos').innerText = sfp.los_count;
+
+                    const losBox = document.getElementById('statSfpLosBox');
+                    if (sfp.los_count > 0) {
+                        losBox.className = 'text-danger fw-bold';
+                    } else {
+                        losBox.className = 'text-secondary';
+                    }
+                }
+
+                // 3. Audio Alarm Trigger if incident detected
+                if ((stats.offline_devices > prevOfflineCount && stats.offline_devices > 0) || 
+                    (sfp && sfp.los_count > prevLosCount && sfp.los_count > 0)) {
+                    playNocAlertTone();
+                }
+                prevOfflineCount = stats.offline_devices;
+                prevLosCount = sfp ? sfp.los_count : 0;
+
+                // 4. Critical Alert Banner
+                const banner = document.getElementById('alertBanner');
+                if (stats.offline_devices > 0 || (sfp && sfp.los_count > 0)) {
+                    banner.style.display = 'block';
+                    let issues = [];
+                    if (stats.offline_devices > 0) issues.push(`${stats.offline_devices} Perangkat OFFLINE`);
+                    if (sfp && sfp.los_count > 0) issues.push(`${sfp.los_count} Link Fiber Putus (LOS)`);
+                    document.getElementById('alertBannerText').innerText = `PERINGATAN NOC: ${issues.join(' & ')}! Segera periksa koneksi!`;
+                    document.getElementById('alertBannerCount').innerText = `${stats.offline_devices + (sfp ? sfp.los_count : 0)} Insiden Aktif`;
+                } else {
+                    banner.style.display = 'none';
+                }
+
+                // 5. Update Device Cards Data
+                if (data.devices) {
+                    data.devices.forEach(d => {
+                        const rxEl = document.getElementById(`devRx_${d.id}`);
+                        if (rxEl) rxEl.innerText = d.rx_display;
+                        const rxB = document.getElementById(`devRxByte_${d.id}`);
+                        if (rxB) rxB.innerText = d.rx_byte_display;
+
+                        const txEl = document.getElementById(`devTx_${d.id}`);
+                        if (txEl) txEl.innerText = d.tx_display;
+                        const txB = document.getElementById(`devTxByte_${d.id}`);
+                        if (txB) txB.innerText = d.tx_byte_display;
+
+                        const totEl = document.getElementById(`devTot_${d.id}`);
+                        if (totEl) totEl.innerText = d.total_display;
+
+                        const barDl = document.getElementById(`devBarDl_${d.id}`);
+                        if (barDl) barDl.style.width = `${d.rx_percent}%`;
+                        const barUl = document.getElementById(`devBarUl_${d.id}`);
+                        if (barUl) barUl.style.width = `${d.tx_percent}%`;
+
+                        const cpuEl = document.getElementById(`devCpu_${d.id}`);
+                        if (cpuEl) cpuEl.innerText = d.cpu_usage !== null ? `${d.cpu_usage}%` : '-';
+
+                        const memEl = document.getElementById(`devMem_${d.id}`);
+                        if (memEl) memEl.innerText = d.memory_usage !== null ? `${d.memory_usage}%` : '-';
+
+                        const tempEl = document.getElementById(`devTemp_${d.id}`);
+                        if (tempEl) tempEl.innerText = d.temperature !== null ? `${d.temperature}°C` : '-';
+
+                        const upEl = document.getElementById(`devUptime_${d.id}`);
+                        if (upEl) upEl.innerText = d.uptime;
+                    });
+                }
+
+                // 6. Update Top Interfaces Leaderboard
+                if (data.top_interfaces) {
+                    const ifaceContainer = document.getElementById('topInterfacesList');
+                    let ifaceHtml = '';
+                    data.top_interfaces.forEach(iface => {
+                        ifaceHtml += `
+                            <div class="p-2.5 rounded-2 d-flex justify-content-between align-items-center" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05);">
+                                <div>
+                                    <div class="d-flex align-items-center gap-1.5">
+                                        <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;">
+                                            ${iface.name}
+                                        </span>
+                                        ${iface.port_speed && iface.port_speed !== '-' ? `
+                                            <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; font-size: 0.65rem;">
+                                                ${iface.port_speed}
+                                            </span>
+                                        ` : ''}
+                                    </div>
+                                    <div class="text-secondary small font-mono mt-1 text-truncate" style="max-width: 170px; font-size: 0.7rem;" title="${iface.alias || iface.device_name}">
+                                        ${iface.alias || iface.device_name}
+                                    </div>
+                                </div>
+                                <div class="text-end font-mono">
+                                    <div class="fw-bold text-light" style="font-size: 0.85rem;">${iface.total_display}</div>
+                                    <div class="d-flex align-items-center justify-content-end gap-1 small mt-0.5" style="font-size: 0.68rem;">
+                                        <span class="text-cyan">↓ ${iface.rx_display}</span>
+                                        <span class="text-secondary">|</span>
+                                        <span style="color: #c084fc;">↑ ${iface.tx_display}</span>
+                                    </div>
+                                    ${iface.is_sfp && iface.sfp_rx_power !== null ? `
+                                        <div class="text-success small mt-0.5" style="font-size: 0.65rem;">
+                                            <i class="bi bi-optical-audio me-0.5"></i>${Number(iface.sfp_rx_power).toFixed(2)} dBm
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    ifaceContainer.innerHTML = ifaceHtml;
+                }
+
+            } catch (err) {
+                console.error("Telemetry fetch error:", err);
+            }
+        }
+
+        // Countdown timer loop
+        setInterval(() => {
+            countdown--;
+            if (countdown <= 0) {
+                countdown = REFRESH_INTERVAL_SEC;
+                fetchTelemetry();
+            }
+            document.getElementById('syncTimerText').innerText = `${countdown}s`;
+            const ring = document.getElementById('syncRingProgress');
+            const offset = (countdown / REFRESH_INTERVAL_SEC) * 60;
+            ring.style.strokeDashoffset = 60 - offset;
+        }, 1000);
+
+        // First initial fetch after 1 second
+        setTimeout(fetchTelemetry, 1000);
+    </script>
+</body>
+</html>
