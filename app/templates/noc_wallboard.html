@@ -340,11 +340,11 @@
     <!-- MAIN VIEWPORT CONTAINER -->
     <main class="container-fluid px-3 px-md-4 py-3">
         
-        <!-- 4 HERO METRIC WIDGETS -->
+        <!-- 2 HERO METRIC WIDGETS -->
         <div class="row g-3 mb-4">
             
             <!-- Widget 1: Total Fleet Traffic -->
-            <div class="col-12 col-sm-6 col-xl-3">
+            <div class="col-12 col-md-6">
                 <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
@@ -375,7 +375,7 @@
             </div>
 
             <!-- Widget 2: Fleet Availability & SLA -->
-            <div class="col-12 col-sm-6 col-xl-3">
+            <div class="col-12 col-md-6">
                 <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
@@ -403,68 +403,6 @@
                     </div>
                     <div class="text-secondary small font-mono mt-1 text-end" style="font-size: 0.68rem;">
                         Total Perangkat: <span id="statTotalDevices">{{ stats.total_devices }}</span> Unit
-                    </div>
-                </div>
-            </div>
-
-            <!-- Widget 3: Hardware & Thermal Status -->
-            <div class="col-12 col-sm-6 col-xl-3">
-                <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <div class="text-secondary small fw-medium">THERMAL & HARDWARE HEALTH</div>
-                            <div class="fs-2 fw-extrabold font-mono mt-1 {% if stats.hot_devices > 0 %}text-warning{% else %}text-light{% endif %}" id="statMaxTemp">
-                                {% if stats.max_temp %}{{ stats.max_temp }} °C{% else %}- °C{% endif %}
-                            </div>
-                        </div>
-                        <div class="p-2.5 rounded-3" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
-                            <i class="bi bi-thermometer-half fs-3"></i>
-                        </div>
-                    </div>
-                    
-                    <div class="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top border-light border-opacity-10 font-mono small" style="font-size: 0.78rem;">
-                        <span class="text-secondary">
-                            Avg CPU: <b class="text-light" id="statAvgCpu">{{ stats.avg_cpu or 0 }}%</b>
-                        </span>
-                        <span class="text-secondary">•</span>
-                        <span class="text-secondary">
-                            Avg RAM: <b class="text-light" id="statAvgMem">{{ stats.avg_mem or 0 }}%</b>
-                        </span>
-                    </div>
-                    <div class="small font-mono mt-1 text-end" style="font-size: 0.68rem;">
-                        <span class="{% if stats.hot_devices > 0 %}text-warning{% else %}text-success{% endif %}" id="statThermalStatus">
-                            <i class="bi bi-cpu me-1"></i>{% if stats.hot_devices > 0 %}{{ stats.hot_devices }} Perangkat Hangat{% else %}Kondisi Termal Normal{% endif %}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Widget 4: SFP & Optical Link Status -->
-            <div class="col-12 col-sm-6 col-xl-3">
-                <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <div class="text-secondary small fw-medium">SFP OPTICAL BACKBONE (DDM)</div>
-                            <div class="fs-2 fw-extrabold font-mono glow-purple mt-1" id="statSfpCount">
-                                {{ sfp_summary.total_sfp or 0 }} <span class="fs-5 text-secondary fw-normal">Link</span>
-                            </div>
-                        </div>
-                        <div class="p-2.5 rounded-3" style="background: rgba(168, 85, 247, 0.15); color: #c084fc;">
-                            <i class="bi bi-optical-audio fs-3"></i>
-                        </div>
-                    </div>
-                    
-                    <div class="d-flex justify-content-between align-items-center mt-2.5 pt-2 border-top border-light border-opacity-10 font-mono small" style="font-size: 0.78rem;">
-                        <span class="text-success">
-                            <i class="bi bi-check-circle me-1"></i><span id="statSfpGood">{{ sfp_summary.good_count + sfp_summary.normal_count }}</span> Normal
-                        </span>
-                        <span class="text-secondary">•</span>
-                        <span id="statSfpLosBox" class="{% if sfp_summary.los_count > 0 %}text-danger fw-bold{% else %}text-secondary{% endif %}">
-                            <i class="bi bi-x-octagon me-1"></i><span id="statSfpLos">{{ sfp_summary.los_count }}</span> LOS (Putus)
-                        </span>
-                    </div>
-                    <div class="text-secondary small font-mono mt-1 text-end" style="font-size: 0.68rem;">
-                        Transceiver DDM Telemetri Aktif
                     </div>
                 </div>
             </div>
@@ -1202,17 +1140,24 @@
                         offlineBox.className = 'font-mono';
                     }
 
-                    document.getElementById('statMaxTemp').innerText = stats.max_temp ? `${stats.max_temp} °C` : '- °C';
-                    document.getElementById('statAvgCpu').innerText = `${stats.avg_cpu}%`;
-                    document.getElementById('statAvgMem').innerText = `${stats.avg_mem}%`;
+                    const maxTempEl = document.getElementById('statMaxTemp');
+                    if (maxTempEl) maxTempEl.innerText = stats.max_temp ? `${stats.max_temp} °C` : '- °C';
+
+                    const avgCpuEl = document.getElementById('statAvgCpu');
+                    if (avgCpuEl) avgCpuEl.innerText = `${stats.avg_cpu}%`;
+
+                    const avgMemEl = document.getElementById('statAvgMem');
+                    if (avgMemEl) avgMemEl.innerText = `${stats.avg_mem}%`;
                     
                     const thermalStatus = document.getElementById('statThermalStatus');
-                    if (stats.hot_devices > 0) {
-                        thermalStatus.className = 'text-warning';
-                        thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>${stats.hot_devices} Perangkat Hangat`;
-                    } else {
-                        thermalStatus.className = 'text-success';
-                        thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>Kondisi Termal Normal`;
+                    if (thermalStatus) {
+                        if (stats.hot_devices > 0) {
+                            thermalStatus.className = 'text-warning';
+                            thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>${stats.hot_devices} Perangkat Hangat`;
+                        } else {
+                            thermalStatus.className = 'text-success';
+                            thermalStatus.innerHTML = `<i class="bi bi-cpu me-1"></i>Kondisi Termal Normal`;
+                        }
                     }
 
                     // If currently on "live" range, push latest point smoothly
@@ -1227,18 +1172,25 @@
                     }
                 }
 
-                // 2. Update SFP Stats
+                // 2. Update SFP Stats (Safe check)
                 const sfp = data.sfp_summary;
                 if (sfp) {
-                    document.getElementById('statSfpCount').innerHTML = `${sfp.total_sfp} <span class="fs-5 text-secondary fw-normal">Link</span>`;
-                    document.getElementById('statSfpGood').innerText = sfp.good_count + sfp.normal_count;
-                    document.getElementById('statSfpLos').innerText = sfp.los_count;
+                    const sfpCountEl = document.getElementById('statSfpCount');
+                    if (sfpCountEl) sfpCountEl.innerHTML = `${sfp.total_sfp} <span class="fs-5 text-secondary fw-normal">Link</span>`;
+
+                    const sfpGoodEl = document.getElementById('statSfpGood');
+                    if (sfpGoodEl) sfpGoodEl.innerText = sfp.good_count + sfp.normal_count;
+
+                    const sfpLosEl = document.getElementById('statSfpLos');
+                    if (sfpLosEl) sfpLosEl.innerText = sfp.los_count;
 
                     const losBox = document.getElementById('statSfpLosBox');
-                    if (sfp.los_count > 0) {
-                        losBox.className = 'text-danger fw-bold';
-                    } else {
-                        losBox.className = 'text-secondary';
+                    if (losBox) {
+                        if (sfp.los_count > 0) {
+                            losBox.className = 'text-danger fw-bold';
+                        } else {
+                            losBox.className = 'text-secondary';
+                        }
                     }
                 }
 
