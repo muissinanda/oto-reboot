@@ -529,11 +529,94 @@
             </div>
         </div>
 
-        <!-- SPLIT WORKSPACE: LEFT (FLEET CARDS) & RIGHT (TOP BACKBONES & MULTI-RANGE HISTORY CHART) -->
+        <!-- FULL-WIDTH DEDICATED TRAFFIC HISTORY & TELEMETRY CHART (CENTERPIECE, BIG & CLEAR) -->
+        <div class="mb-4" id="historySection">
+            <div class="glass-panel p-3 p-md-4 position-relative overflow-hidden">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-2.5">
+                        <div class="p-2 rounded-2" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee;">
+                            <i class="bi bi-graph-up-arrow fs-5"></i>
+                        </div>
+                        <div>
+                            <h2 class="h5 mb-0 fw-extrabold text-light font-mono">HISTORI & TELEMETRI TRAFFIC</h2>
+                            <div class="text-secondary small font-mono mt-0.5" style="font-size: 0.72rem;">
+                                Grafik Live Throughput Bandwidth Jaringan & Histori Trafik Multi-Rentang
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <!-- Filter Perangkat untuk Histori -->
+                        <div class="d-flex align-items-center gap-1.5 font-mono small" style="font-size: 0.75rem;">
+                            <span class="text-secondary">Sumber:</span>
+                            <select id="chartDeviceSelect" class="form-select form-select-sm py-1 px-2.5" style="font-size: 0.75rem; width: auto; background: rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.15); color: #e2e8f0;" onchange="reloadHistory()">
+                                <option value="">Semua Perangkat (Fleet Total)</option>
+                                {% for d in devices %}
+                                    <option value="{{ d.id }}">{{ d.name }} ({{ d.site }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Range Selector Pills: Live, 1d, 3d, 7d, 30d -->
+                        <div class="d-flex align-items-center gap-1" id="historyRangeGroup">
+                            <button class="range-pill px-2.5 py-1" data-range="live" onclick="changeHistoryRange('live', this)">
+                                <span class="pulse-dot online me-1" style="width: 7px; height: 7px;"></span>Live
+                            </button>
+                            <button class="range-pill active px-2.5 py-1" data-range="1d" onclick="changeHistoryRange('1d', this)">1 Hari</button>
+                            <button class="range-pill px-2.5 py-1" data-range="3d" onclick="changeHistoryRange('3d', this)">3 Hari</button>
+                            <button class="range-pill px-2.5 py-1" data-range="7d" onclick="changeHistoryRange('7d', this)">Seminggu</button>
+                            <button class="range-pill px-2.5 py-1" data-range="30d" onclick="changeHistoryRange('30d', this)">30 Hari</button>
+                        </div>
+
+                        <span class="badge px-2.5 py-1.5" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.72rem;" id="chartRangeBadge">
+                            24 Jam Terakhir
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Canvas Chart (TALL & BIG: 380px) -->
+                <div style="height: 380px; position: relative;">
+                    <canvas id="telemetryChart"></canvas>
+                </div>
+
+                <!-- Legend & Peak/Avg/Volume Stat Highlights -->
+                <div class="row g-3 mt-2 pt-3 border-top border-light border-opacity-10 text-center font-mono">
+                    <div class="col-12 col-md-4">
+                        <div class="p-2.5 rounded-3 h-100" style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2);">
+                            <div class="text-secondary small font-mono" style="font-size: 0.72rem;">TRAFFIC PUNCAK (PEAK)</div>
+                            <div class="fs-4 fw-extrabold glow-cyan mt-1" id="histPeakVal">-</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="p-2.5 rounded-3 h-100" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div class="text-secondary small font-mono" style="font-size: 0.72rem;">RATA-RATA (AVERAGE)</div>
+                            <div class="fs-4 fw-extrabold text-light mt-1" id="histAvgVal">-</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="p-2.5 rounded-3 h-100" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2);">
+                            <div class="text-secondary small font-mono" style="font-size: 0.72rem;">TOTAL VOLUME TRANSFER</div>
+                            <div class="fs-4 fw-extrabold text-success mt-1" id="histVolumeVal">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-center align-items-center gap-4 mt-3 font-mono small" style="font-size: 0.78rem;">
+                    <span class="d-flex align-items-center gap-1.5 text-cyan">
+                        <span style="display:inline-block; width: 12px; height: 12px; background: #06b6d4; border-radius: 3px;"></span> Download (Rx)
+                    </span>
+                    <span class="d-flex align-items-center gap-1.5" style="color: #c084fc;">
+                        <span style="display:inline-block; width: 12px; height: 12px; background: #a855f7; border-radius: 3px;"></span> Upload (Tx)
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM WORKSPACE: LEFT (FLEET CARDS) & RIGHT (TOP BACKBONES) -->
         <div class="row g-3">
             
             <!-- LEFT COLUMN: PERANGKAT MONITOR CARDS (TV WALLBOARD GRID) -->
-            <div class="col-12 col-xl-7">
+            <div class="col-12 col-xl-8">
                 <div class="d-flex justify-content-between align-items-center mb-2.5">
                     <div class="d-flex align-items-center gap-2">
                         <i class="bi bi-hdd-network text-info fs-5"></i>
@@ -700,82 +783,9 @@
                 </div>
             </div>
 
-            <!-- RIGHT COLUMN: MULTI-RANGE HISTORICAL CHART & TOP BACKBONES LEADERBOARD -->
-            <div class="col-12 col-xl-5">
+            <!-- RIGHT COLUMN: TOP BACKBONES LEADERBOARD -->
+            <div class="col-12 col-xl-4">
                 
-                <!-- MULTI-RANGE TRAFFIC THROUGHPUT & HISTORICAL CHART (30 Hari, Seminggu, 3 Hari, 1 Hari, Live) -->
-                <div class="glass-panel p-3 mb-3">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2.5">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-graph-up-arrow text-info"></i>
-                            <h2 class="h6 mb-0 fw-bold text-light font-mono">HISTORI & TELEMETRI TRAFFIC</h2>
-                        </div>
-                        
-                        <!-- Range Selector Pills: Live, 1d, 3d, 7d, 30d -->
-                        <div class="d-flex align-items-center gap-1" id="historyRangeGroup">
-                            <button class="range-pill" data-range="live" onclick="changeHistoryRange('live', this)">
-                                <span class="pulse-dot online me-0.5" style="width: 6px; height: 6px;"></span>Live
-                            </button>
-                            <button class="range-pill active" data-range="1d" onclick="changeHistoryRange('1d', this)">1 Hari</button>
-                            <button class="range-pill" data-range="3d" onclick="changeHistoryRange('3d', this)">3 Hari</button>
-                            <button class="range-pill" data-range="7d" onclick="changeHistoryRange('7d', this)">Seminggu</button>
-                            <button class="range-pill" data-range="30d" onclick="changeHistoryRange('30d', this)">30 Hari</button>
-                        </div>
-                    </div>
-
-                    <!-- Filter Perangkat untuk Histori -->
-                    <div class="d-flex justify-content-between align-items-center mb-2 font-mono small">
-                        <div class="d-flex align-items-center gap-1.5" style="font-size: 0.72rem;">
-                            <span class="text-secondary">Sumber Data:</span>
-                            <select id="chartDeviceSelect" class="form-select form-select-sm py-0 px-2" style="font-size: 0.72rem; width: auto; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1); color: #e2e8f0;" onchange="reloadHistory()">
-                                <option value="">Semua Perangkat (Fleet Total)</option>
-                                {% for d in devices %}
-                                    <option value="{{ d.id }}">{{ d.name }} ({{ d.site }})</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <span class="badge" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;" id="chartRangeBadge">
-                            24 Jam Terakhir
-                        </span>
-                    </div>
-
-                    <!-- Canvas Chart -->
-                    <div style="height: 220px; position: relative;">
-                        <canvas id="telemetryChart"></canvas>
-                    </div>
-
-                    <!-- Legend & Peak/Avg/Volume Stat Highlights -->
-                    <div class="row g-2 mt-2 pt-2 border-top border-light border-opacity-10 text-center font-mono small" style="font-size: 0.72rem;">
-                        <div class="col-4">
-                            <div class="p-1.5 rounded" style="background: rgba(255,255,255,0.02);">
-                                <div class="text-secondary" style="font-size: 0.65rem;">TRAFFIC PUNCAK</div>
-                                <div class="fw-bold glow-cyan mt-0.5" id="histPeakVal">-</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="p-1.5 rounded" style="background: rgba(255,255,255,0.02);">
-                                <div class="text-secondary" style="font-size: 0.65rem;">RATA-RATA</div>
-                                <div class="fw-bold text-light mt-0.5" id="histAvgVal">-</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="p-1.5 rounded" style="background: rgba(255,255,255,0.02);">
-                                <div class="text-secondary" style="font-size: 0.65rem;">TOTAL VOLUME</div>
-                                <div class="fw-bold text-success mt-0.5" id="histVolumeVal">-</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="d-flex justify-content-center align-items-center gap-3 mt-2 font-mono small" style="font-size: 0.7rem;">
-                        <span class="d-flex align-items-center gap-1 text-cyan">
-                            <span style="display:inline-block; width: 10px; height: 10px; background: #06b6d4; border-radius: 2px;"></span> Download (Rx)
-                        </span>
-                        <span class="d-flex align-items-center gap-1" style="color: #c084fc;">
-                            <span style="display:inline-block; width: 10px; height: 10px; background: #a855f7; border-radius: 2px;"></span> Upload (Tx)
-                        </span>
-                    </div>
-                </div>
-
                 <!-- TOP BACKBONE INTERFACES LEADERBOARD -->
                 <div class="glass-panel p-3 mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -984,12 +994,12 @@
 
         // Initialize Real-time & Historical Chart.js
         const ctx = document.getElementById('telemetryChart').getContext('2d');
-        const gradientRx = ctx.createLinearGradient(0, 0, 0, 200);
-        gradientRx.addColorStop(0, 'rgba(6, 182, 212, 0.4)');
+        const gradientRx = ctx.createLinearGradient(0, 0, 0, 360);
+        gradientRx.addColorStop(0, 'rgba(6, 182, 212, 0.45)');
         gradientRx.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
 
-        const gradientTx = ctx.createLinearGradient(0, 0, 0, 200);
-        gradientTx.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
+        const gradientTx = ctx.createLinearGradient(0, 0, 0, 360);
+        gradientTx.addColorStop(0, 'rgba(168, 85, 247, 0.45)');
         gradientTx.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
 
         const telemetryChart = new Chart(ctx, {
@@ -1002,22 +1012,22 @@
                         data: [],
                         borderColor: '#06b6d4',
                         backgroundColor: gradientRx,
-                        borderWidth: 2,
+                        borderWidth: 2.5,
                         tension: 0.35,
                         fill: true,
                         pointRadius: 1,
-                        pointHoverRadius: 5
+                        pointHoverRadius: 6
                     },
                     {
                         label: 'Upload',
                         data: [],
                         borderColor: '#a855f7',
                         backgroundColor: gradientTx,
-                        borderWidth: 2,
+                        borderWidth: 2.5,
                         tension: 0.35,
                         fill: true,
                         pointRadius: 1,
-                        pointHoverRadius: 5
+                        pointHoverRadius: 6
                     }
                 ]
             },
@@ -1031,8 +1041,8 @@
                         mode: 'index',
                         intersect: false,
                         backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleFont: { family: 'JetBrains Mono' },
-                        bodyFont: { family: 'JetBrains Mono' },
+                        titleFont: { family: 'JetBrains Mono', size: 12 },
+                        bodyFont: { family: 'JetBrains Mono', size: 12 },
                         callbacks: {
                             label: function(ctx) {
                                 return ` ${ctx.dataset.label}: ${ctx.parsed.y} Mbps`;
@@ -1042,20 +1052,20 @@
                 },
                 scales: {
                     x: {
-                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
                         ticks: {
-                            color: '#64748b',
-                            font: { family: 'JetBrains Mono', size: 10 },
+                            color: '#94a3b8',
+                            font: { family: 'JetBrains Mono', size: 11 },
                             maxRotation: 0,
                             autoSkip: true,
-                            maxTicksLimit: 8
+                            maxTicksLimit: 14
                         }
                     },
                     y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        grid: { color: 'rgba(255, 255, 255, 0.06)' },
                         ticks: {
-                            color: '#64748b',
-                            font: { family: 'JetBrains Mono', size: 10 },
+                            color: '#94a3b8',
+                            font: { family: 'JetBrains Mono', size: 11 },
                             callback: function(v) {
                                 if (v >= 1000) return (v / 1000).toFixed(1) + 'G';
                                 return v + 'M';
