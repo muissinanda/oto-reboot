@@ -19,7 +19,7 @@ from app.database import (
     get_setting, set_setting, hash_password, verify_password,
     now_wib
 )
-from app.snmp_service import lookup_asn_name
+from app.snmp_service import lookup_asn_name, resolve_asn_name
 from app.seed import seed_initial_aps
 from app.scheduler import setup_scheduler, reload_scheduler_jobs, execute_scheduled_reboot
 from app.ssh_worker import execute_ssh_reboot, reboot_aps_batch
@@ -1569,12 +1569,22 @@ async def api_get_device_bgp(device_id: int, request: Request, db: Session = Dep
     
     peers = db.query(DeviceBgpPeer).filter(DeviceBgpPeer.device_id == dev.id).all()
     bgp_data = []
+    need_commit = False
     for p in peers:
+        as_title = p.as_name
+        if not as_title or as_title == "Unknown AS" or as_title.startswith("AS"):
+            resolved = resolve_asn_name(p.remote_as, fetch_remote=True)
+            if resolved:
+                as_title = resolved
+                p.as_name = resolved
+                need_commit = True
+
         bgp_data.append({
             "id": p.id,
             "peer_ip": p.peer_ip,
             "remote_as": p.remote_as,
-            "as_name": p.as_name or lookup_asn_name(p.remote_as) or "Unknown AS",
+            "as_name": as_title or lookup_asn_name(p.remote_as) or f"AS{p.remote_as}",
+            "he_url": f"https://bgp.he.net/AS{p.remote_as}" if p.remote_as else None,
             "state": p.state,
             "is_established": (p.state.lower() == "established"),
             "admin_status": p.admin_status,
@@ -1589,6 +1599,14 @@ async def api_get_device_bgp(device_id: int, request: Request, db: Session = Dep
             "last_updated": p.last_updated.strftime("%d/%m/%Y %H:%M:%S") if p.last_updated else "-"
         })
 
+    if need_commit:
+        try:
+            db.commit()
+        except Exception:
+            pass
+
+    local_as_title = resolve_asn_name(dev.bgp_local_as, fetch_remote=True) if dev.bgp_local_as else None
+
     return {
         "status": "success",
         "device": {
@@ -1598,9 +1616,26 @@ async def api_get_device_bgp(device_id: int, request: Request, db: Session = Dep
             "bgp_peer_count": dev.bgp_peer_count or len(peers),
             "bgp_established_count": dev.bgp_established_count or sum(1 for p in peers if p.state == "established"),
             "bgp_local_as": dev.bgp_local_as,
+            "bgp_local_as_name": local_as_title,
+            "bgp_local_he_url": f"https://bgp.he.net/AS{dev.bgp_local_as}" if dev.bgp_local_as else None,
             "bgp_router_id": dev.bgp_router_id
         },
         "bgp_peers": bgp_data
+    }
+
+@app.get("/api/nms/asn/{asn}")
+async def api_get_asn_details(asn: int, request: Request, db: Session = Depends(get_db)):
+    """Mengambil informasi AS Number dari cache atau Hurricane Electric (bgp.he.net)"""
+    user = get_current_user_from_request(request, db)
+    if not user:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Harap login terlebih dahulu"})
+    
+    name = resolve_asn_name(asn, fetch_remote=True)
+    return {
+        "status": "success",
+        "asn": asn,
+        "name": name or f"AS{asn}",
+        "url": f"https://bgp.he.net/AS{asn}"
     }
 
 @app.get("/api/nms/public/telemetry")

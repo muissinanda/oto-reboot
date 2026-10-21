@@ -1,5 +1,7 @@
 import time
 import asyncio
+import re
+import urllib.request
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional, Tuple
@@ -44,6 +46,7 @@ OID_BGP_PEER_EST_TIME = "1.3.6.1.2.1.15.3.1.16"          # Elapsed Time in Estab
 # Juniper BGP Prefix MIB (BGP4-V2-MIB-JUNIPER)
 OID_JNX_BGP_PREFIX_ACCEPTED = "1.3.6.1.4.1.2636.5.1.1.2.6.2.1.8" # Accepted Prefixes
 OID_JNX_BGP_PREFIX_TOTAL = "1.3.6.1.4.1.2636.5.1.1.2.6.2.1.7"    # Total In-Prefixes
+OID_JNX_BGP_PEER_REMOTE_ADDR = "1.3.6.1.4.1.2636.5.1.1.2.1.1.1.11" # Peer Remote IP address
 OID_CISCO_BGP_PREFIX_ACCEPTED = "1.3.6.1.4.1.9.9.187.1.2.4.1.1" # Cisco BGP Accepted Prefixes
 
 # Juniper Operating Sensors (JUNIPER-MIB - Routing Engine, FPC, Chassis)
@@ -115,6 +118,9 @@ KNOWN_ASNS = {
     13335: "Cloudflare",
     15169: "Google",
     7713: "Telkom Indonesia",
+    9905: "PT Link Net Tbk",
+    64302: "IDREN - Indonesia Research & Education Network",
+    132678: "Universitas Jember",
     24203: "Telkomsel",
     17995: "Indosat Ooredoo",
     23947: "Moratelindo (Oxygen)",
@@ -133,7 +139,7 @@ KNOWN_ASNS = {
     13414: "Twitter / X",
     2635: "APNIC",
     4637: "Telstra",
-    6939: "Hurricane Electric",
+    6939: "Hurricane Electric (bgp.he.net)",
     3356: "Lumen / Level3",
     2914: "NTT Communications",
     6453: "Tata Communications",
@@ -146,11 +152,88 @@ KNOWN_ASNS = {
     24086: "CBN Nusantara",
 }
 
-def lookup_asn_name(asn: Optional[int]) -> Optional[str]:
-    """Mengembalikan nama provider AS yang terkenal jika terdaftar"""
-    if not asn:
+# Cache in-memory untuk ASN lookup dari Hurricane Electric (bgp.he.net)
+ASN_CACHE: Dict[int, str] = dict(KNOWN_ASNS)
+
+def parse_ip_address(val: Any) -> str:
+    """Format PySNMP IpAddress / OctetString secara konsisten menjadi format IPv4 dotted-quad"""
+    if val is None:
+        return ""
+    try:
+        if hasattr(val, "prettyPrint"):
+            s = str(val.prettyPrint()).strip()
+            if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", s):
+                return s
+        if hasattr(val, "asNumbers"):
+            nums = list(val.asNumbers())
+            if len(nums) == 4:
+                return ".".join(str(b) for b in nums)
+        raw_b = bytes(val)
+        if len(raw_b) == 4:
+            return ".".join(str(b) for b in raw_b)
+    except Exception:
+        pass
+    return str(val).strip()
+
+def fetch_asn_from_he(asn: int, timeout: float = 3.5) -> Optional[str]:
+    """Mengambil nama organisasi/provider resmi dari Hurricane Electric (https://bgp.he.net/AS{asn})"""
+    if not asn or asn <= 0:
         return None
-    return KNOWN_ASNS.get(asn)
+    
+    url = f"https://bgp.he.net/AS{asn}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+            
+            m_h1 = re.search(r'<h1><a[^>]*>(?:AS\d+\s+)?([^<]+)</a>', html)
+            if m_h1:
+                name = m_h1.group(1).strip()
+                if name:
+                    return name
+            
+            m_title = re.search(r'<title>(?:AS\d+\s+)?(.*?)(?:\s+-\s+bgp\.he\.net)?</title>', html, re.IGNORECASE)
+            if m_title:
+                name = m_title.group(1).strip()
+                if name and "bgp.he.net" not in name.lower():
+                    return name
+    except Exception:
+        pass
+    return None
+
+def resolve_asn_name(asn: Optional[int], fetch_remote: bool = True) -> Optional[str]:
+    """Mengembalikan nama provider AS dengan prioritas in-memory cache -> Hurricane Electric (bgp.he.net)"""
+    if not asn or asn <= 0:
+        return None
+    if asn in ASN_CACHE:
+        return ASN_CACHE[asn]
+    if fetch_remote:
+        he_name = fetch_asn_from_he(asn)
+        if he_name:
+            ASN_CACHE[asn] = he_name
+            return he_name
+    return f"AS{asn}"
+
+async def resolve_asn_name_async(asn: Optional[int]) -> Optional[str]:
+    """Versi asinkron non-blocking untuk resolving ASN dari bgp.he.net tanpa menghambat event loop"""
+    if not asn or asn <= 0:
+        return None
+    if asn in ASN_CACHE:
+        return ASN_CACHE[asn]
+    loop = asyncio.get_event_loop()
+    name = await loop.run_in_executor(None, fetch_asn_from_he, asn)
+    if name:
+        ASN_CACHE[asn] = name
+        return name
+    return f"AS{asn}"
+
+def lookup_asn_name(asn: Optional[int]) -> Optional[str]:
+    """Alias kompatibel lookup nama ASN"""
+    return resolve_asn_name(asn, fetch_remote=False)
 
 def parse_optical_power(val: Any) -> Optional[float]:
     """Konversi nilai optical power ke format dBm standar (di MikroTik 0.001 dBm)"""
@@ -923,7 +1006,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         except Exception:
                             pass
                     elif o_str.startswith(OID_BGP_IDENTIFIER[:-2]):
-                        dev.bgp_router_id = str(vb[1]).strip()
+                        dev.bgp_router_id = parse_ip_address(vb[1])
 
             # Query tabel BGP Peer State
             peer_states = await walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_STATE, 50)
@@ -937,6 +1020,8 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_OUT_MSGS, 50),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_EST_TIME, 50),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_BGP_PREFIX_ACCEPTED, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_BGP_PEER_REMOTE_ADDR, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_CISCO_BGP_PREFIX_ACCEPTED, 50),
                     return_exceptions=True
                 )
                 bgp_rem_as = res_bgp[0] if isinstance(res_bgp[0], dict) else {}
@@ -947,6 +1032,15 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                 bgp_out_msg = res_bgp[5] if isinstance(res_bgp[5], dict) else {}
                 bgp_est_time = res_bgp[6] if isinstance(res_bgp[6], dict) else {}
                 bgp_prefixes = res_bgp[7] if isinstance(res_bgp[7], dict) else {}
+                bgp_jnx_addrs = res_bgp[8] if isinstance(res_bgp[8], dict) else {}
+                bgp_cisco_prefs = res_bgp[9] if isinstance(res_bgp[9], dict) else {}
+
+                # Buat mapping Juniper peer index ke IP address
+                jnx_ip_to_idx = {}
+                for j_idx, j_addr_raw in bgp_jnx_addrs.items():
+                    addr_s = parse_ip_address(j_addr_raw)
+                    if addr_s:
+                        jnx_ip_to_idx[addr_s] = str(j_idx)
 
                 BGP_STATE_MAP = {
                     1: "idle",
@@ -975,7 +1069,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         est_count += 1
 
                     r_as = int(bgp_rem_as.get(p_ip_raw, 0)) if bgp_rem_as.get(p_ip_raw) else None
-                    as_org = lookup_asn_name(r_as)
+                    as_org = await resolve_asn_name_async(r_as)
 
                     admin_val = int(bgp_admin.get(p_ip_raw, 2)) if bgp_admin.get(p_ip_raw) else 2
                     admin_str = "start" if admin_val == 2 else "stop"
@@ -987,14 +1081,25 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     est_sec = int(bgp_est_time.get(p_ip_raw, 0)) if bgp_est_time.get(p_ip_raw) else 0
                     uptime_str = format_uptime(est_sec * 100) if est_sec > 0 else "-"
 
-                    # Prefix count matching: di Juniper OID suffix berformat [peer_idx].1.1
+                    # Prefix count matching: Juniper / Cisco / Standard
                     pref_count = None
                     if p_ip_raw in bgp_prefixes:
                         try:
                             pref_count = int(bgp_prefixes[p_ip_raw])
                         except Exception:
                             pass
-                    else:
+                    
+                    if pref_count is None and peer_ip in jnx_ip_to_idx:
+                        j_p_idx = jnx_ip_to_idx[peer_ip]
+                        for k_p, v_p in bgp_prefixes.items():
+                            if str(k_p).startswith(j_p_idx):
+                                try:
+                                    pref_count = int(v_p)
+                                    break
+                                except Exception:
+                                    pass
+
+                    if pref_count is None:
                         for k_pref, v_pref in bgp_prefixes.items():
                             if str(p_ip_raw) in str(k_pref):
                                 try:
@@ -1002,6 +1107,12 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                                     break
                                 except Exception:
                                     pass
+
+                    if pref_count is None and p_ip_raw in bgp_cisco_prefs:
+                        try:
+                            pref_count = int(bgp_cisco_prefs[p_ip_raw])
+                        except Exception:
+                            pass
 
                     now_p_dt = now_wib()
                     if peer_ip in existing_peers:
