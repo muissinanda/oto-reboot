@@ -348,7 +348,7 @@
                 <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
-                            <div class="text-secondary small fw-medium">TOTAL NETWORK TRAFFIC</div>
+                            <div class="text-secondary small fw-medium">TOTAL UPLINK / INTERNET TRANSIT</div>
                             <div class="fs-2 fw-extrabold font-mono glow-cyan mt-1" id="statTotalTraffic">
                                 {{ stats.total_traffic_display or '0.00 Mbps' }}
                             </div>
@@ -469,6 +469,126 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- 3 DEDICATED UPLINK TRANSIT PROVIDERS (TELKOM, LINKNET, IDREN) -->
+        <div class="mb-4" id="uplinkSection">
+            <div class="d-flex justify-content-between align-items-center mb-2.5">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge px-2.5 py-1.5 rounded-2 font-mono d-inline-flex align-items-center"
+                          style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(6, 182, 212, 0.25)); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.45); font-size: 0.85rem; font-weight: 800; letter-spacing: 0.04em;">
+                        <i class="bi bi-broadcast-pin text-warning me-1.5 fs-6"></i>BANDWIDTH TRANSIT & UPLINK UTAMA
+                    </span>
+                    <span class="text-secondary small font-mono d-none d-md-inline" style="font-size: 0.72rem;">
+                        Live Telemetri Jalur Keluar-Masuk Internet (Via Telkom, Linknet, IDREN)
+                    </span>
+                </div>
+                <div class="font-mono small text-secondary" style="font-size: 0.75rem;">
+                    Total Bandwidth Uplink: <b class="glow-cyan fs-6" id="uplinkTotalSumDisplay">{{ uplink_summary.total_traffic_display or '0.00 Mbps' }}</b>
+                </div>
+            </div>
+
+            <div class="row g-3" id="uplinksGrid">
+                {% for up in uplinks %}
+                <div class="col-12 col-md-4">
+                    <div class="glass-panel p-3 h-100 position-relative overflow-hidden" style="border-top: 3px solid {{ up.badge_color }};">
+                        
+                        <!-- Header Card: Provider Name, ASN Link, Status Badge -->
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-light border-opacity-10">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="p-2 rounded-2" style="background: {{ up.badge_bg }}; color: {{ up.badge_color }};">
+                                    <i class="bi {{ up.icon }} fs-5"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-extrabold text-light font-mono fs-6 lh-1">{{ up.name|upper }}</div>
+                                    <div class="mt-1">
+                                        <a href="{{ up.he_url }}" target="_blank" rel="noopener" class="badge font-mono text-decoration-none"
+                                           style="background: {{ up.badge_bg }}; color: {{ up.badge_color }}; border: 1px solid {{ up.border_color }}; font-size: 0.68rem; padding: 2px 6px;"
+                                           title="Buka detail AS{{ up.asn }} di Hurricane Electric (bgp.he.net)">
+                                            AS{{ up.asn }} <i class="bi bi-box-arrow-up-right ms-0.5" style="font-size: 0.58rem;"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="badge font-mono fw-bold" id="upStatusBadge_{{ up.key }}"
+                                      style="background: {% if up.is_established %}rgba(16, 185, 129, 0.18){% else %}rgba(239, 68, 68, 0.18){% endif %}; color: {% if up.is_established %}#34d399{% else %}#f87171{% endif %}; border: 1px solid {% if up.is_established %}rgba(16, 185, 129, 0.4){% else %}rgba(239, 68, 68, 0.4){% endif %}; font-size: 0.72rem; padding: 4px 8px;">
+                                    {% if up.is_established %}● ESTABLISHED{% else %}● {{ up.status|upper }}{% endif %}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Port & Remote Peer Bar -->
+                        <div class="d-flex justify-content-between align-items-center py-1 px-2 rounded-2 mb-2.5 font-mono" style="background: rgba(0, 0, 0, 0.3); font-size: 0.72rem;">
+                            <span class="text-light">
+                                <i class="bi bi-ethernet me-1 text-cyan"></i>Port: <b class="text-warning font-mono" id="upPort_{{ up.key }}">{{ up.port_name }}</b>
+                            </span>
+                            <span class="text-secondary small text-truncate" style="max-width: 140px;" title="Peer IP: {{ up.peer_ip }}">
+                                Peer: {{ up.peer_ip }}
+                            </span>
+                        </div>
+
+                        <!-- Traffic Dual Meter (Big Numbers) -->
+                        <div class="p-2.5 rounded-2 mb-2" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div class="row g-2 align-items-center">
+                                <!-- Download -->
+                                <div class="col-6 border-end border-light border-opacity-10 pe-2">
+                                    <div class="d-flex align-items-center gap-1 mb-0.5">
+                                        <span class="badge" style="background: rgba(6, 182, 212, 0.2); color: #22d3ee; font-size: 0.62rem; padding: 2px 4px;">
+                                            <i class="bi bi-arrow-down"></i> DL
+                                        </span>
+                                        <span class="text-secondary small font-mono" style="font-size: 0.68rem;">Download</span>
+                                    </div>
+                                    <div class="fs-5 fw-extrabold font-mono text-cyan lh-1" id="upRx_{{ up.key }}">
+                                        {{ up.rx_display }}
+                                    </div>
+                                    <div class="text-secondary font-mono small mt-0.5" style="font-size: 0.65rem;" id="upRxByte_{{ up.key }}">
+                                        {{ up.rx_byte_display }}
+                                    </div>
+                                </div>
+                                <!-- Upload -->
+                                <div class="col-6 ps-2">
+                                    <div class="d-flex align-items-center gap-1 mb-0.5">
+                                        <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.62rem; padding: 2px 4px;">
+                                            <i class="bi bi-arrow-up"></i> UL
+                                        </span>
+                                        <span class="text-secondary small font-mono" style="font-size: 0.68rem;">Upload</span>
+                                    </div>
+                                    <div class="fs-5 fw-extrabold font-mono lh-1" style="color: #d8b4fe;" id="upTx_{{ up.key }}">
+                                        {{ up.tx_display }}
+                                    </div>
+                                    <div class="text-secondary font-mono small mt-0.5" style="font-size: 0.65rem;" id="upTxByte_{{ up.key }}">
+                                        {{ up.tx_byte_display }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Ratio Bar -->
+                            <div class="split-bar mt-2" style="height: 4px;">
+                                <div class="split-dl" id="upBarDl_{{ up.key }}" style="width: {{ up.rx_percent }}%;"></div>
+                                <div class="split-ul" id="upBarUl_{{ up.key }}" style="width: {{ up.tx_percent }}%;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Card Footer: Total Bandwidth & SFP / Prefix Status -->
+                        <div class="d-flex justify-content-between align-items-center text-secondary font-mono small" style="font-size: 0.7rem;">
+                            <span>Total: <strong class="text-light" id="upTot_{{ up.key }}">{{ up.total_display }}</strong></span>
+                            <div class="d-flex align-items-center gap-2">
+                                {% if up.accepted_prefixes is not none %}
+                                    <span title="Prefix Diterima"><i class="bi bi-signpost-split me-0.5 text-info"></i>{{ up.accepted_prefixes }} rts</span>
+                                {% endif %}
+                                <span id="upSfp_{{ up.key }}" class="text-success">
+                                    {% if up.sfp_rx_power %}
+                                        <i class="bi bi-optical-audio me-0.5"></i>{{ up.sfp_rx_power|round(2) }} dBm
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
 
         <!-- SPLIT WORKSPACE: LEFT (FLEET CARDS) & RIGHT (TOP BACKBONES & MULTI-RANGE HISTORY CHART) -->
@@ -1141,6 +1261,64 @@
                     document.getElementById('alertBannerCount').innerText = `${stats.offline_devices + (sfp ? sfp.los_count : 0)} Insiden Aktif`;
                 } else {
                     banner.style.display = 'none';
+                }
+
+                // 5. Update Uplinks Transit Telemetry (Telkom, Linknet, IDREN)
+                if (data.uplinks) {
+                    data.uplinks.forEach(up => {
+                        const portEl = document.getElementById(`upPort_${up.key}`);
+                        if (portEl) portEl.innerText = up.port_name || '-';
+
+                        const rxEl = document.getElementById(`upRx_${up.key}`);
+                        if (rxEl) rxEl.innerText = up.rx_display;
+
+                        const rxByteEl = document.getElementById(`upRxByte_${up.key}`);
+                        if (rxByteEl) rxByteEl.innerText = up.rx_byte_display;
+
+                        const txEl = document.getElementById(`upTx_${up.key}`);
+                        if (txEl) txEl.innerText = up.tx_display;
+
+                        const txByteEl = document.getElementById(`upTxByte_${up.key}`);
+                        if (txByteEl) txByteEl.innerText = up.tx_byte_display;
+
+                        const totEl = document.getElementById(`upTot_${up.key}`);
+                        if (totEl) totEl.innerText = up.total_display;
+
+                        const barDl = document.getElementById(`upBarDl_${up.key}`);
+                        if (barDl) barDl.style.width = `${up.rx_percent}%`;
+
+                        const barUl = document.getElementById(`upBarUl_${up.key}`);
+                        if (barUl) barUl.style.width = `${up.tx_percent}%`;
+
+                        const sfpEl = document.getElementById(`upSfp_${up.key}`);
+                        if (sfpEl) {
+                            if (up.sfp_rx_power !== null && up.sfp_rx_power !== undefined) {
+                                sfpEl.innerHTML = `<i class="bi bi-optical-audio me-0.5"></i>${Number(up.sfp_rx_power).toFixed(2)} dBm`;
+                            } else {
+                                sfpEl.innerHTML = '';
+                            }
+                        }
+
+                        const statusBadge = document.getElementById(`upStatusBadge_${up.key}`);
+                        if (statusBadge) {
+                            if (up.is_established) {
+                                statusBadge.style.background = 'rgba(16, 185, 129, 0.18)';
+                                statusBadge.style.color = '#34d399';
+                                statusBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                                statusBadge.innerText = '● ESTABLISHED';
+                            } else {
+                                statusBadge.style.background = 'rgba(239, 68, 68, 0.18)';
+                                statusBadge.style.color = '#f87171';
+                                statusBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                                statusBadge.innerText = `● ${up.status.toUpperCase()}`;
+                            }
+                        }
+                    });
+
+                    if (data.uplink_summary) {
+                        const sumEl = document.getElementById('uplinkTotalSumDisplay');
+                        if (sumEl) sumEl.innerText = data.uplink_summary.total_traffic_display;
+                    }
                 }
 
                 // 5. Update Device Cards Data

@@ -122,6 +122,8 @@ class DeviceBgpPeer(Base):
     fsm_established_time = Column(Integer, default=0)      # Detik session berjalan
     uptime = Column(String(50), nullable=True)             # Human-readable uptime
     accepted_prefixes = Column(Integer, nullable=True)     # Jumlah route / prefix diterima
+    interface_name = Column(String(100), nullable=True)    # Interface port (e.g. xe-0/1/0, xe-0/1/2)
+    local_ip = Column(String(50), nullable=True)          # Local IP address peering
     description = Column(String(255), nullable=True)
     last_updated = Column(DateTime, nullable=True)
 
@@ -284,6 +286,21 @@ def init_db():
                 if col_name not in dev_cols:
                     try:
                         conn.execute(text(f"ALTER TABLE network_devices ADD COLUMN {col_name} {col_type}"))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+            # Migrasi tabel device_bgp_peers untuk interface & local_ip
+            res_bgp_p = conn.execute(text("PRAGMA table_info(device_bgp_peers)")).fetchall()
+            bgp_p_cols = [row[1] for row in res_bgp_p]
+            bgp_p_new_cols = [
+                ("interface_name", "VARCHAR(100)"),
+                ("local_ip", "VARCHAR(50)"),
+            ]
+            for col_name, col_type in bgp_p_new_cols:
+                if col_name not in bgp_p_cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE device_bgp_peers ADD COLUMN {col_name} {col_type}"))
                         conn.commit()
                     except Exception:
                         pass

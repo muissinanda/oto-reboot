@@ -48,6 +48,9 @@ OID_JNX_BGP_PREFIX_ACCEPTED = "1.3.6.1.4.1.2636.5.1.1.2.6.2.1.8" # Accepted Pref
 OID_JNX_BGP_PREFIX_TOTAL = "1.3.6.1.4.1.2636.5.1.1.2.6.2.1.7"    # Total In-Prefixes
 OID_JNX_BGP_PEER_REMOTE_ADDR = "1.3.6.1.4.1.2636.5.1.1.2.1.1.1.11" # Peer Remote IP address
 OID_CISCO_BGP_PREFIX_ACCEPTED = "1.3.6.1.4.1.9.9.187.1.2.4.1.1" # Cisco BGP Accepted Prefixes
+OID_BGP_PEER_LOCAL_ADDR = "1.3.6.1.2.1.15.3.1.5"                 # BGP Local IP Address for peering
+OID_IP_AD_ENT_IF_INDEX = "1.3.6.1.2.1.4.20.1.2"                  # IP Address to ifIndex mapping
+OID_IP_ROUTE_IF_INDEX = "1.3.6.1.2.1.4.21.1.7"                   # Route to ifIndex mapping
 
 # Juniper Operating Sensors (JUNIPER-MIB - Routing Engine, FPC, Chassis)
 OID_JNX_OPERATING_CPU = "1.3.6.1.4.1.2636.3.1.13.1.8"     # CPU % (Routing Engine 0 index .9.1.0.0 dll)
@@ -1022,6 +1025,9 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_BGP_PREFIX_ACCEPTED, 50),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_BGP_PEER_REMOTE_ADDR, 50),
                     walk_oid_column(snmp_engine, auth_data, transport, OID_CISCO_BGP_PREFIX_ACCEPTED, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_BGP_PEER_LOCAL_ADDR, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_IP_AD_ENT_IF_INDEX, 50),
+                    walk_oid_column(snmp_engine, auth_data, transport, OID_IP_ROUTE_IF_INDEX, 50),
                     return_exceptions=True
                 )
                 bgp_rem_as = res_bgp[0] if isinstance(res_bgp[0], dict) else {}
@@ -1034,6 +1040,9 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                 bgp_prefixes = res_bgp[7] if isinstance(res_bgp[7], dict) else {}
                 bgp_jnx_addrs = res_bgp[8] if isinstance(res_bgp[8], dict) else {}
                 bgp_cisco_prefs = res_bgp[9] if isinstance(res_bgp[9], dict) else {}
+                bgp_loc_addrs = res_bgp[10] if len(res_bgp) > 10 and isinstance(res_bgp[10], dict) else {}
+                ip_if_indices = res_bgp[11] if len(res_bgp) > 11 and isinstance(res_bgp[11], dict) else {}
+                ip_route_indices = res_bgp[12] if len(res_bgp) > 12 and isinstance(res_bgp[12], dict) else {}
 
                 # Buat mapping Juniper peer index ke IP address
                 jnx_ip_to_idx = {}
@@ -1114,6 +1123,51 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         except Exception:
                             pass
 
+                    # Deteksi Interface Port untuk BGP Peer
+                    loc_ip_raw = bgp_loc_addrs.get(p_ip_raw)
+                    loc_ip_str = parse_ip_address(loc_ip_raw) if loc_ip_raw else None
+                    detected_iface_name = None
+
+                    # 1. Cek via ipAdEntIfIndex (mapping IP lokal ke ifIndex)
+                    if loc_ip_str:
+                        for ip_k, if_v in ip_if_indices.items():
+                            if loc_ip_str in str(ip_k):
+                                try:
+                                    t_idx = int(if_v)
+                                    if t_idx in existing_interfaces:
+                                        detected_iface_name = existing_interfaces[t_idx].name
+                                        break
+                                except Exception:
+                                    pass
+
+                    # 2. Cek via ipRouteIfIndex (route next-hop ke peer_ip)
+                    if not detected_iface_name:
+                        for route_k, if_v in ip_route_indices.items():
+                            if peer_ip in str(route_k):
+                                try:
+                                    t_idx = int(if_v)
+                                    if t_idx in existing_interfaces:
+                                        detected_iface_name = existing_interfaces[t_idx].name
+                                        break
+                                except Exception:
+                                    pass
+
+                    # 3. Cek via keyword provider pada alias atau nama interface
+                    if not detected_iface_name and r_as:
+                        kw = None
+                        if r_as == 7713 or "telkom" in (as_org or "").lower():
+                            kw = "telkom"
+                        elif r_as == 9905 or "linknet" in (as_org or "").lower() or "link net" in (as_org or "").lower():
+                            kw = "linknet"
+                        elif r_as == 64302 or "idren" in (as_org or "").lower():
+                            kw = "idren"
+
+                        if kw:
+                            for _idx, _iface in existing_interfaces.items():
+                                if kw in (_iface.alias or "").lower() or kw in _iface.name.lower():
+                                    detected_iface_name = _iface.name
+                                    break
+
                     now_p_dt = now_wib()
                     if peer_ip in existing_peers:
                         p_obj = existing_peers[peer_ip]
@@ -1129,6 +1183,10 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         p_obj.uptime = uptime_str
                         if pref_count is not None:
                             p_obj.accepted_prefixes = pref_count
+                        if detected_iface_name:
+                            p_obj.interface_name = detected_iface_name
+                        if loc_ip_str:
+                            p_obj.local_ip = loc_ip_str
                         p_obj.last_updated = now_p_dt
                     else:
                         p_obj = DeviceBgpPeer(
@@ -1136,6 +1194,8 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                             peer_ip=peer_ip,
                             remote_as=r_as,
                             as_name=as_org,
+                            interface_name=detected_iface_name,
+                            local_ip=loc_ip_str,
                             state=st_str,
                             admin_status=admin_str,
                             in_updates=in_u,

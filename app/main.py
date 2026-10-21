@@ -531,8 +531,15 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
         return bit_str, byte_str
 
     for d in devices:
-        total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in d.interfaces)
-        total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in d.interfaces)
+        # Filter interface fisik agar tidak double-counting dengan sub-interface (unit .0)
+        has_phys = any("." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"] for i in d.interfaces)
+        if has_phys:
+            t_ifaces = [i for i in d.interfaces if "." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"]]
+        else:
+            t_ifaces = [i for i in d.interfaces if i.name.lower() not in ["lo", "loopback"]]
+
+        total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
+        total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
         total_bw = total_rx + total_tx
         total_network_traffic_mbps += total_bw
 
@@ -652,8 +659,15 @@ def get_nms_telemetry_payload(db: Session):
         return bit_str, byte_str
 
     for d in devices:
-        total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in d.interfaces)
-        total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in d.interfaces)
+        # Filter interface fisik agar tidak double-counting dengan logical unit (.0)
+        has_phys = any("." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"] for i in d.interfaces)
+        if has_phys:
+            t_ifaces = [i for i in d.interfaces if "." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"]]
+        else:
+            t_ifaces = [i for i in d.interfaces if i.name.lower() not in ["lo", "loopback"]]
+
+        total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
+        total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
         total_bw = total_rx + total_tx
         
         total_network_traffic_mbps += total_bw
@@ -735,6 +749,165 @@ def get_nms_telemetry_payload(db: Session):
             "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "-"
         })
 
+    # -------------------------------------------------------------
+    # EKSTRAKSI 3 UPLINK TRANSIT UTAMA: TELKOM, LINKNET, IDREN
+    # -------------------------------------------------------------
+    uplink_configs = [
+        {
+            "key": "telkom",
+            "name": "Telkom Indonesia",
+            "asn": 7713,
+            "badge_color": "#f87171",
+            "badge_bg": "rgba(239, 68, 68, 0.15)",
+            "border_color": "rgba(239, 68, 68, 0.35)",
+            "icon": "bi-globe2",
+            "keywords": ["telkom", "astinet", "telkom-transit"]
+        },
+        {
+            "key": "linknet",
+            "name": "Link Net",
+            "asn": 9905,
+            "badge_color": "#22d3ee",
+            "badge_bg": "rgba(6, 182, 212, 0.15)",
+            "border_color": "rgba(6, 182, 212, 0.35)",
+            "icon": "bi-lightning-charge-fill",
+            "keywords": ["linknet", "link net", "firstmedia"]
+        },
+        {
+            "key": "idren",
+            "name": "IDREN",
+            "asn": 64302,
+            "badge_color": "#c084fc",
+            "badge_bg": "rgba(192, 132, 252, 0.15)",
+            "border_color": "rgba(192, 132, 252, 0.35)",
+            "icon": "bi-mortarboard-fill",
+            "keywords": ["idren", "ren", "edu"]
+        }
+    ]
+
+    all_bgp_peers = db.query(DeviceBgpPeer).all()
+    device_iface_map = {d.id: d.interfaces for d in devices}
+
+    uplinks_data = []
+    total_uplink_rx_mbps = 0.0
+    total_uplink_tx_mbps = 0.0
+
+    for cfg in uplink_configs:
+        t_asn = cfg["asn"]
+        m_peer = None
+        for p in all_bgp_peers:
+            if p.remote_as == t_asn:
+                m_peer = p
+                break
+            if any(kw in (p.as_name or "").lower() for kw in cfg["keywords"]):
+                m_peer = p
+                break
+
+        is_est = False
+        peer_st = "down"
+        p_ip = "-"
+        p_prefixes = None
+        p_uptime = "-"
+        p_iface = None
+        sfp_pwr = None
+        p_name = "-"
+        rx_m = 0.0
+        tx_m = 0.0
+
+        if m_peer:
+            p_ip = m_peer.peer_ip
+            is_est = (m_peer.state.lower() == "established")
+            peer_st = "established" if is_est else m_peer.state.lower()
+            p_prefixes = m_peer.accepted_prefixes
+            p_uptime = m_peer.uptime or "-"
+
+            d_ifaces = device_iface_map.get(m_peer.device_id, [])
+
+            # 1. Cari via m_peer.interface_name
+            if m_peer.interface_name:
+                p_if_raw = m_peer.interface_name.strip()
+                p_if_base = p_if_raw.split('.')[0]
+                for i in d_ifaces:
+                    if i.name == p_if_raw or i.name == p_if_base:
+                        p_iface = i
+                        break
+
+            # 2. Cari via keyword provider di alias atau nama interface
+            if not p_iface:
+                for i in d_ifaces:
+                    al = (i.alias or "").lower()
+                    nm = (i.name or "").lower()
+                    if any(kw in al or kw in nm for kw in cfg["keywords"]):
+                        p_iface = i
+                        break
+
+            # 3. Fallback jika ada interface dengan nama tersimpan
+            if not p_iface and m_peer.interface_name:
+                p_name = m_peer.interface_name
+
+        if p_iface:
+            p_name = p_iface.name
+            rx_m = p_iface.rx_rate_mbps or 0.0
+            tx_m = p_iface.tx_rate_mbps or 0.0
+            sfp_pwr = p_iface.sfp_rx_power
+
+        bw_m = rx_m + tx_m
+        total_uplink_rx_mbps += rx_m
+        total_uplink_tx_mbps += tx_m
+
+        rx_b, rx_by = format_speed_str(rx_m)
+        tx_b, tx_by = format_speed_str(tx_m)
+        tot_b, tot_by = format_speed_str(bw_m)
+
+        rx_pct = round((rx_m / bw_m) * 100, 1) if bw_m > 0 else 50
+        tx_pct = round(100 - rx_pct, 1) if bw_m > 0 else 50
+
+        uplinks_data.append({
+            "key": cfg["key"],
+            "name": cfg["name"],
+            "asn": t_asn,
+            "badge_color": cfg["badge_color"],
+            "badge_bg": cfg["badge_bg"],
+            "border_color": cfg["border_color"],
+            "icon": cfg["icon"],
+            "status": peer_st,
+            "is_established": is_est,
+            "peer_ip": p_ip,
+            "port_name": p_name,
+            "uptime": p_uptime,
+            "accepted_prefixes": p_prefixes,
+            "sfp_rx_power": sfp_pwr,
+            "rx_mbps": round(rx_m, 2),
+            "tx_mbps": round(tx_m, 2),
+            "total_mbps": round(bw_m, 2),
+            "rx_display": rx_b,
+            "rx_byte_display": rx_by,
+            "tx_display": tx_b,
+            "tx_byte_display": tx_by,
+            "total_display": tot_b,
+            "rx_percent": rx_pct,
+            "tx_percent": tx_pct,
+            "he_url": f"https://bgp.he.net/AS{t_asn}"
+        })
+
+    total_uplink_bw_mbps = total_uplink_rx_mbps + total_uplink_tx_mbps
+    uplink_tot_b, uplink_tot_by = format_speed_str(total_uplink_bw_mbps)
+    uplink_rx_b, uplink_rx_by = format_speed_str(total_uplink_rx_mbps)
+    uplink_tx_b, uplink_tx_by = format_speed_str(total_uplink_tx_mbps)
+
+    # Jika uplink memiliki traffic, gunakan sebagai total traffic utama di monitor
+    if total_uplink_bw_mbps > 0:
+        fleet_tot_bit = uplink_tot_b
+        fleet_tot_byte = uplink_tot_by
+        fleet_rx_bit = uplink_rx_b
+        fleet_rx_byte = uplink_rx_byte
+        fleet_tx_bit = uplink_tx_b
+        fleet_tx_byte = uplink_tx_by
+    else:
+        fleet_tot_bit, fleet_tot_byte = format_speed_str(total_network_traffic_mbps)
+        fleet_rx_bit, fleet_rx_byte = format_speed_str(total_network_rx_mbps)
+        fleet_tx_bit, fleet_tx_byte = format_speed_str(total_network_tx_mbps)
+
     top_interfaces = sorted(all_interfaces, key=lambda x: x["total_rate_mbps"], reverse=True)[:8]
 
     sfp_los_count = sum(1 for s in sfp_links if s.sfp_rx_loss)
@@ -742,10 +915,6 @@ def get_nms_telemetry_payload(db: Session):
     sfp_normal_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and -23.0 <= s.sfp_rx_power < -18.0 and not s.sfp_rx_loss)
     sfp_warning_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and -27.0 <= s.sfp_rx_power < -23.0 and not s.sfp_rx_loss)
     sfp_critical_count = sum(1 for s in sfp_links if s.sfp_rx_power is not None and s.sfp_rx_power < -27.0 and not s.sfp_rx_loss)
-
-    fleet_tot_bit, fleet_tot_byte = format_speed_str(total_network_traffic_mbps)
-    fleet_rx_bit, fleet_rx_byte = format_speed_str(total_network_rx_mbps)
-    fleet_tx_bit, fleet_tx_byte = format_speed_str(total_network_tx_mbps)
 
     valid_cpus = [d.cpu_usage for d in devices if d.cpu_usage is not None]
     avg_cpu = round(sum(valid_cpus) / len(valid_cpus), 1) if valid_cpus else 0.0
@@ -764,19 +933,31 @@ def get_nms_telemetry_payload(db: Session):
             "online_devices": online_devices,
             "offline_devices": offline_devices,
             "hot_devices": hot_devices,
-            "total_traffic_mbps": round(total_network_traffic_mbps, 2),
+            "total_traffic_mbps": round(total_uplink_bw_mbps if total_uplink_bw_mbps > 0 else total_network_traffic_mbps, 2),
             "total_traffic_display": fleet_tot_bit,
             "total_traffic_byte": fleet_tot_byte,
-            "total_rx_mbps": round(total_network_rx_mbps, 2),
+            "total_rx_mbps": round(total_uplink_rx_mbps if total_uplink_bw_mbps > 0 else total_network_rx_mbps, 2),
             "total_rx_display": fleet_rx_bit,
             "total_rx_byte": fleet_rx_byte,
-            "total_tx_mbps": round(total_network_tx_mbps, 2),
+            "total_tx_mbps": round(total_uplink_tx_mbps if total_uplink_bw_mbps > 0 else total_network_tx_mbps, 2),
             "total_tx_display": fleet_tx_bit,
             "total_tx_byte": fleet_tx_byte,
             "avg_cpu": avg_cpu,
             "avg_mem": avg_mem,
             "max_temp": max_temp,
             "timestamp": now_wib().strftime('%H:%M:%S WIB')
+        },
+        "uplinks": uplinks_data,
+        "uplink_summary": {
+            "total_traffic_mbps": round(total_uplink_bw_mbps, 2),
+            "total_traffic_display": uplink_tot_b,
+            "total_traffic_byte": uplink_tot_by,
+            "total_rx_mbps": round(total_uplink_rx_mbps, 2),
+            "total_rx_display": uplink_rx_b,
+            "total_rx_byte": uplink_rx_by,
+            "total_tx_mbps": round(total_uplink_tx_mbps, 2),
+            "total_tx_display": uplink_tx_b,
+            "total_tx_byte": uplink_tx_by
         },
         "sfp_summary": {
             "total_sfp": len(sfp_links),
@@ -801,6 +982,8 @@ async def page_noc_wallboard(request: Request, db: Session = Depends(get_db)):
         name="noc_wallboard.html",
         context={
             "stats": telemetry["stats"],
+            "uplinks": telemetry.get("uplinks", []),
+            "uplink_summary": telemetry.get("uplink_summary", {}),
             "sfp_summary": telemetry["sfp_summary"],
             "devices": telemetry["devices"],
             "top_interfaces": telemetry["top_interfaces"],
