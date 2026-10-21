@@ -900,7 +900,7 @@ def get_nms_telemetry_payload(db: Session):
         fleet_tot_bit = uplink_tot_b
         fleet_tot_byte = uplink_tot_by
         fleet_rx_bit = uplink_rx_b
-        fleet_rx_byte = uplink_rx_byte
+        fleet_rx_byte = uplink_rx_by
         fleet_tx_bit = uplink_tx_b
         fleet_tx_byte = uplink_tx_by
     else:
