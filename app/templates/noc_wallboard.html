@@ -996,6 +996,7 @@
         let prevOfflineCount = 0;
         let prevLosCount = 0;
         let prevIncidentCount = 0;
+        let prevTopDevOrder = '';
 
         // Auto-Cycle state for TV
         let autoCycleTimer = null;
@@ -1537,9 +1538,32 @@
                                 </div>
                             `;
                         });
-                        const savedScrollTop = topNonBgpContainer.scrollTop;
-                        topNonBgpContainer.innerHTML = htmlStr;
-                        topNonBgpContainer.scrollTop = savedScrollTop;
+                        const currentOrder = data.top_non_bgp_devices.map(d => d.id).join(',');
+                        if (currentOrder !== prevTopDevOrder) {
+                            // Render HTML hanya jika urutan ranking perangkat berubah
+                            const savedScrollTop = topNonBgpContainer.scrollTop;
+                            topNonBgpContainer.innerHTML = htmlStr;
+                            topNonBgpContainer.scrollTop = savedScrollTop;
+                            prevTopDevOrder = currentOrder;
+                        } else {
+                            // Update DOM in-place super cepat tanpa repaint/reflow layout (60fps)
+                            data.top_non_bgp_devices.forEach(d => {
+                                const tot = document.getElementById(`topDevTot_${d.id}`);
+                                if (tot) tot.innerText = d.total_display;
+                                const rx = document.getElementById(`topDevRx_${d.id}`);
+                                if (rx) rx.innerText = `↓ ${d.rx_display}`;
+                                const tx = document.getElementById(`topDevTx_${d.id}`);
+                                if (tx) tx.innerText = `↑ ${d.tx_display}`;
+                                const bDl = document.getElementById(`topDevBarDl_${d.id}`);
+                                if (bDl) bDl.style.width = `${d.rx_percent}%`;
+                                const bUl = document.getElementById(`topDevBarUl_${d.id}`);
+                                if (bUl) bUl.style.width = `${d.tx_percent}%`;
+                                const cpu = document.getElementById(`topDevCpu_${d.id}`);
+                                if (cpu) cpu.innerHTML = `CPU: <b class="${d.cpu_usage && d.cpu_usage > 70 ? 'text-danger' : 'text-light'}">${d.cpu_usage !== null ? d.cpu_usage + '%' : '-'}</b>`;
+                                const temp = document.getElementById(`topDevTemp_${d.id}`);
+                                if (temp) temp.innerHTML = `Suhu: <b class="text-light">${d.temperature !== null ? d.temperature + '°C' : '-'}</b>`;
+                            });
+                        }
                     }
                     const countBadge = document.getElementById('topDevCountBadge');
                     if (countBadge) countBadge.innerText = `${data.top_non_bgp_devices.length} Perangkat`;

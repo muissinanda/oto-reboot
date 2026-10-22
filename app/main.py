@@ -39,6 +39,12 @@ async def lifespan(app: FastAPI):
     # Shutdown
 
 app = FastAPI(title="OTO REBOOT", lifespan=lifespan)
+
+# Kompresi GZip otomatis untuk seluruh response (> 1000 bytes)
+# Mengurangi payload network hingga 85% untuk performa sat-set
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Session Middleware untuk login
 app.add_middleware(SessionMiddleware, secret_key="oto-reboot-fleet-secret-key-39284729")
 
@@ -624,7 +630,13 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
 
 def get_nms_telemetry_payload(db: Session):
     """Mengumpulkan metrik live seluruh fleet untuk Wallboard NOC tanpa perlu autentikasi"""
-    devices = db.query(NetworkDevice).order_by(NetworkDevice.site, NetworkDevice.name).all()
+    from sqlalchemy.orm import selectinload
+    devices = (
+        db.query(NetworkDevice)
+        .options(selectinload(NetworkDevice.interfaces))
+        .order_by(NetworkDevice.site, NetworkDevice.name)
+        .all()
+    )
     
     total_devices = len(devices)
     online_devices = sum(1 for d in devices if d.is_online)
@@ -1038,11 +1050,30 @@ def get_nms_telemetry_payload(db: Session):
         "sites": sites
     }
 
+# -----------------------------------------------------------------
+# IN-MEMORY TELEMETRY MICRO-CACHE (SUB-MILLISECOND RESPONSE TIME)
+# Melayani wallboard dalam < 1 milidetik dari RAM tanpa query berulang
+# -----------------------------------------------------------------
+import time
+
+_cached_telemetry_payload = None
+_cached_telemetry_time = 0.0
+
+def get_cached_nms_telemetry_payload(db: Session, max_age: float = 2.0):
+    global _cached_telemetry_payload, _cached_telemetry_time
+    now = time.time()
+    if _cached_telemetry_payload is not None and (now - _cached_telemetry_time) < max_age:
+        return _cached_telemetry_payload
+    payload = get_nms_telemetry_payload(db)
+    _cached_telemetry_payload = payload
+    _cached_telemetry_time = now
+    return payload
+
 @app.get("/noc", response_class=HTMLResponse)
 @app.get("/nms/wallboard", response_class=HTMLResponse)
 async def page_noc_wallboard(request: Request, db: Session = Depends(get_db)):
     """Dashboard Public Wallboard NOC untuk tampilan monitor besar / TV tanpa password"""
-    telemetry = get_nms_telemetry_payload(db)
+    telemetry = get_cached_nms_telemetry_payload(db)
     return templates.TemplateResponse(
         request=request,
         name="noc_wallboard.html",
@@ -1894,6 +1925,20 @@ async def api_public_telemetry(db: Session = Depends(get_db)):
     """Endpoint telemetri live publik (tanpa login) untuk Wallboard NOC"""
     return get_nms_telemetry_payload(db)
 
+_cached_history = {}
+_cached_history_time = {}
+
+def get_cached_traffic_history(db: Session, time_range: str = "1d", device_id: Optional[int] = None, site: Optional[str] = None):
+    cache_key = f"{time_range}_{device_id}_{site}"
+    ttl = 4.0 if time_range == "live" else 45.0
+    now = time.time()
+    if cache_key in _cached_history and (now - _cached_history_time.get(cache_key, 0.0)) < ttl:
+        return _cached_history[cache_key]
+    res = get_traffic_history(db, time_range, device_id, site)
+    _cached_history[cache_key] = res
+    _cached_history_time[cache_key] = now
+    return res
+
 def get_traffic_history(db: Session, time_range: str = "1d", device_id: Optional[int] = None, site: Optional[str] = None):
     """Menghitung histori traffic untuk 30 hari, 7 hari, 3 hari, 1 hari, dan live stream"""
     import math
@@ -2031,4 +2076,4 @@ async def api_public_traffic_history(
     db: Session = Depends(get_db)
 ):
     """Endpoint histori traffic (30d, 7d, 3d, 1d, live) publik tanpa password"""
-    return get_traffic_history(db, time_range=range, device_id=device_id, site=site)
+    return get_cached_traffic_history(db, time_range=range, device_id=device_id, site=site)

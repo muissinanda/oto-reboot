@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, Text, ForeignKey, BigInteger
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Float, Text, ForeignKey, BigInteger, event
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 # Standarisasi Waktu ke Waktu Indonesia Barat (WIB / UTC+7)
@@ -21,6 +21,26 @@ engine = create_engine(
     DATABASE_URL, 
     connect_args={"check_same_thread": False}
 )
+
+# -----------------------------------------------------------------
+# OPTIMASI EKSTREM SQLITE WAL & MEMORY PRAGMAS (LIGHTWEIGHT & SAT-SET)
+# - WAL Mode: Pembaca & penulis tidak saling mengunci (concurrency instan)
+# - Synchronous NORMAL: Write I/O 5-10x lebih kencang tanpa stall
+# - Cache 64MB & Memory Temp Store: Query dieksekusi di RAM
+# - Memory-mapped I/O (mmap 256MB): Direct memory kernel access
+# -----------------------------------------------------------------
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-64000")
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        cursor.execute("PRAGMA mmap_size=268435456")
+        cursor.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

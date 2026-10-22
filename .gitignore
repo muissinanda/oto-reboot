@@ -35,3 +35,7 @@ data/*.log
 .vscode/
 *.swp
 *.swo
+
+data/*
+*.db-wal
+*.db-shm
