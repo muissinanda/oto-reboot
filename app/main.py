@@ -746,6 +746,7 @@ def get_nms_telemetry_payload(db: Session):
             "bgp_established_count": d.bgp_established_count or 0,
             "bgp_local_as": d.bgp_local_as,
             "bgp_router_id": d.bgp_router_id,
+            "is_bgp": bool((d.name and d.name.strip().lower() == "bgp") or (d.name and "bgp" in d.name.lower()) or (d.bgp_peer_count and d.bgp_peer_count > 0 and d.device_type == "juniper")),
             "last_polled": d.last_polled.strftime('%d/%m/%Y %H:%M:%S') if d.last_polled else "-"
         })
 
