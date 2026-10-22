@@ -321,6 +321,13 @@
                 <span class="d-none d-sm-inline ms-1" id="cycleText">Cycle: Off</span>
             </button>
 
+            <!-- Hide / Show Alert Banner Toggle (Di sebelah menu Cycle) -->
+            <button class="btn btn-noc" id="btnAlertToggle" onclick="toggleAlertBanner()" title="Sembunyikan / Tampilkan banner notifikasi alert">
+                <i class="bi bi-bell text-warning" id="alertToggleIcon"></i>
+                <span class="d-none d-sm-inline ms-1" id="alertToggleText">Alert: On</span>
+                <span class="badge bg-danger rounded-pill ms-1 font-mono" id="alertToggleBadge" style="display: none; font-size: 0.65rem;">0</span>
+            </button>
+
             <!-- Audio Alert Toggle -->
             <button class="btn btn-noc" id="btnAudioToggle" onclick="toggleAudioAlert()" title="Bunyikan suara peringatan jika link putus">
                 <i class="bi bi-bell-slash" id="audioIcon"></i>
@@ -362,9 +369,14 @@
                         {% endif %}
                     </span>
                 </div>
-                <span class="badge bg-danger font-mono fs-6 px-2.5 py-1" id="alertBannerCount">
-                    {{ incidents|length }} Insiden Aktif
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-danger font-mono fs-6 px-2.5 py-1" id="alertBannerCount">
+                        {{ incidents|length }} Insiden Aktif
+                    </span>
+                    <button class="btn btn-sm btn-outline-danger py-0 px-2 rounded-2 text-light" onclick="toggleAlertBanner(true)" title="Sembunyikan Peringatan">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- DETAILED INCIDENT CARDS / CHIPS -->
@@ -997,6 +1009,55 @@
         let prevLosCount = 0;
         let prevIncidentCount = 0;
         let prevTopDevOrder = '';
+        let lastKnownIncidentCount = 0;
+        let isAlertBannerHidden = localStorage.getItem('noc_alert_hidden') === 'true';
+
+        function updateAlertToggleUI(incidentCount) {
+            const btn = document.getElementById('btnAlertToggle');
+            const icon = document.getElementById('alertToggleIcon');
+            const text = document.getElementById('alertToggleText');
+            const badge = document.getElementById('alertToggleBadge');
+            const banner = document.getElementById('alertBanner');
+
+            if (!btn) return;
+
+            if (isAlertBannerHidden) {
+                btn.classList.add('active');
+                icon.className = 'bi bi-bell-slash text-secondary';
+                text.innerText = 'Alert: Off';
+                if (banner) banner.style.display = 'none';
+                if (badge) {
+                    if (incidentCount > 0) {
+                        badge.style.display = 'inline-block';
+                        badge.innerText = incidentCount;
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            } else {
+                btn.classList.remove('active');
+                icon.className = incidentCount > 0 ? 'bi bi-bell-fill text-danger' : 'bi bi-bell text-warning';
+                text.innerText = 'Alert: On';
+                if (badge) badge.style.display = 'none';
+                if (banner) {
+                    if (incidentCount > 0) {
+                        banner.style.display = 'block';
+                    } else {
+                        banner.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        function toggleAlertBanner(forceHide) {
+            if (forceHide === true) {
+                isAlertBannerHidden = true;
+            } else {
+                isAlertBannerHidden = !isAlertBannerHidden;
+            }
+            localStorage.setItem('noc_alert_hidden', isAlertBannerHidden ? 'true' : 'false');
+            updateAlertToggleUI(lastKnownIncidentCount || 0);
+        }
 
         // Auto-Cycle state for TV
         let autoCycleTimer = null;
@@ -1347,8 +1408,15 @@
                 const bannerDetails = document.getElementById('alertBannerDetails');
 
                 const incidents = data.incidents || [];
+                lastKnownIncidentCount = incidents.length;
+                updateAlertToggleUI(incidents.length);
+
                 if (incidents.length > 0) {
-                    banner.style.display = 'block';
+                    if (!isAlertBannerHidden) {
+                        banner.style.display = 'block';
+                    } else {
+                        banner.style.display = 'none';
+                    }
                     bannerCount.innerText = `${incidents.length} Insiden Aktif`;
 
                     if (incidents.length === 1) {
@@ -1664,6 +1732,9 @@
             const offset = (countdown / REFRESH_INTERVAL_SEC) * 60;
             ring.style.strokeDashoffset = 60 - offset;
         }, 1000);
+
+        // Initialize Alert banner toggle state on load
+        updateAlertToggleUI(lastKnownIncidentCount);
 
         // First initial fetch & load default history (1 Hari)
         setTimeout(() => {
