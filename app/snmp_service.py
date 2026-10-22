@@ -1261,7 +1261,13 @@ def run_nms_poll_cycle():
         return
 
     async def _poll_all():
-        tasks = [poll_single_device(d_id) for d_id in dev_ids]
+        # Batasi max 8 polling perangkat bersamaan agar CPU, memori, & lock SQLite tetap enteng
+        sem = asyncio.Semaphore(8)
+        async def _bounded_poll(d_id):
+            async with sem:
+                return await poll_single_device(d_id)
+
+        tasks = [_bounded_poll(d_id) for d_id in dev_ids]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     try:

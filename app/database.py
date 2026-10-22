@@ -51,16 +51,16 @@ class AccessPoint(Base):
     name = Column(String(100), nullable=False)
     ip = Column(String(50), unique=True, index=True, nullable=False)
     device_type = Column(String(50), default="unifi", nullable=False) # "unifi" (SSH exec) atau "ruckus" (rkscli shell)
-    site = Column(String(100), default="Fasilkom", nullable=False) # Site / Fakultas (misal: Fasilkom, FT, FEB, Rektorat)
+    site = Column(String(100), default="Fasilkom", nullable=False, index=True) # Site / Fakultas (misal: Fasilkom, FT, FEB, Rektorat)
     group = Column(String(50), default="Default", nullable=True) # Sub-lokasi / Grup IP (misal: Lantai 2, 10.132.24.x)
     username = Column(String(50), nullable=True) # Custom SSH username
     password = Column(String(100), nullable=True) # Custom SSH password
     port = Column(Integer, default=22)
-    is_online = Column(Boolean, default=False)
+    is_online = Column(Boolean, default=False, index=True)
     latency_ms = Column(Float, nullable=True)
     last_checked = Column(DateTime, nullable=True)
     last_rebooted = Column(DateTime, nullable=True)
-    is_active = Column(Boolean, default=True) # Monitor & reboot enabled
+    is_active = Column(Boolean, default=True, index=True) # Monitor & reboot enabled
     created_at = Column(DateTime, default=now_wib)
 
 class RebootSchedule(Base):
@@ -72,7 +72,7 @@ class RebootSchedule(Base):
     hour = Column(Integer, default=3) # 0 - 23
     minute = Column(Integer, default=0) # 0 - 59
     days_of_week = Column(String(50), default="*") # * or 0,1,2,3,4,5,6 (0=Mon or Mon,Tue..)
-    is_enabled = Column(Boolean, default=True)
+    is_enabled = Column(Boolean, default=True, index=True)
     target_type = Column(String(20), default="all") # "all", "group", "selected"
     target_payload = Column(Text, nullable=True) # comma-separated IDs or group name
     last_run = Column(DateTime, nullable=True)
@@ -88,7 +88,7 @@ class RebootLog(Base):
     ap_ip = Column(String(50), nullable=False)
     trigger_type = Column(String(20), default="manual") # manual, scheduled
     schedule_name = Column(String(100), nullable=True)
-    status = Column(String(20), nullable=False) # success, failed
+    status = Column(String(20), nullable=False, index=True) # success, failed
     message = Column(Text, nullable=True)
     duration_ms = Column(Integer, default=0)
 
@@ -102,9 +102,9 @@ class NetworkDevice(Base):
     snmp_version = Column(String(10), default="2c")       # 1, 2c
     snmp_community = Column(String(50), default="public")
     snmp_port = Column(Integer, default=161)
-    site = Column(String(100), default="Fasilkom")
-    is_active = Column(Boolean, default=True)
-    is_online = Column(Boolean, default=False)
+    site = Column(String(100), default="Fasilkom", index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    is_online = Column(Boolean, default=False, index=True)
     uptime = Column(String(50), nullable=True)
     cpu_usage = Column(Float, nullable=True)          # Persentase CPU (0-100%)
     memory_usage = Column(Float, nullable=True)       # Persentase RAM (0-100%)
@@ -324,6 +324,25 @@ def init_db():
                         conn.commit()
                     except Exception:
                         pass
+
+            # Buat indeks pencarian penting di SQLite untuk performa query instan
+            perf_indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_ap_site ON access_points(site)",
+                "CREATE INDEX IF NOT EXISTS idx_ap_active ON access_points(is_active)",
+                "CREATE INDEX IF NOT EXISTS idx_ap_online ON access_points(is_online)",
+                "CREATE INDEX IF NOT EXISTS idx_netdev_site ON network_devices(site)",
+                "CREATE INDEX IF NOT EXISTS idx_netdev_active ON network_devices(is_active)",
+                "CREATE INDEX IF NOT EXISTS idx_netdev_online ON network_devices(is_online)",
+                "CREATE INDEX IF NOT EXISTS idx_reboot_status ON reboot_logs(status)",
+                "CREATE INDEX IF NOT EXISTS idx_sched_enabled ON reboot_schedules(is_enabled)",
+                "CREATE INDEX IF NOT EXISTS idx_deviface_devid ON device_interfaces(device_id)",
+            ]
+            for idx_sql in perf_indexes:
+                try:
+                    conn.execute(text(idx_sql))
+                    conn.commit()
+                except Exception:
+                    pass
         except Exception:
             pass
 

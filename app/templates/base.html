@@ -45,10 +45,6 @@
             color: #f1f5f9;
             min-height: 100vh;
             overflow-x: hidden;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
-            background-attachment: fixed;
         }
 
         code, pre, .font-mono {
@@ -71,12 +67,10 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
-        /* Glassmorphism sidebar */
+        /* High-Performance Sidebar (Solid Dark, 0 Blur Overhead) */
         .sidebar {
             width: var(--sidebar-width);
-            background: rgba(15, 23, 42, 0.75);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            background: #0d1527;
             border-right: 1px solid var(--border-subtle);
             position: fixed;
             top: 0;
@@ -94,11 +88,10 @@
             flex-direction: column;
         }
 
-        /* Topbar Header */
+        /* Topbar Header (Solid Dark, 0 Blur Overhead) */
         .topbar {
             height: 70px;
-            background: rgba(9, 13, 22, 0.65);
-            backdrop-filter: blur(16px);
+            background: #090f1d;
             border-bottom: 1px solid var(--border-subtle);
             position: sticky;
             top: 0;
@@ -180,35 +173,34 @@
             box-shadow: 0 0 10px #6366f1;
         }
 
-        /* Glass Card Component */
+        /* High-Performance Card Component (Solid Dark, 0 Blur Overhead) */
         .glass-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            background: #0f172a;
             border: 1px solid var(--border-subtle);
             border-radius: 16px;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
-            transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            transition: border-color 0.2s ease;
+            contain: content;
         }
         .glass-card:hover {
-            border-color: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.18);
         }
 
-        /* Stat Card */
+        /* High-Performance Stat Card */
         .stat-card {
             position: relative;
             overflow: hidden;
             padding: 1.5rem;
             border-radius: 16px;
-            background: var(--bg-card);
+            background: #0f172a;
             border: 1px solid var(--border-subtle);
-            backdrop-filter: blur(16px);
-            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            transition: border-color 0.2s ease, transform 0.2s ease;
+            contain: content;
         }
         .stat-card:hover {
-            transform: translateY(-4px);
-            border-color: rgba(99, 102, 241, 0.3);
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+            transform: translateY(-2px);
+            border-color: rgba(99, 102, 241, 0.4);
         }
         .stat-card .stat-icon-wrapper {
             width: 50px;

@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc
 
 from app.database import (
@@ -349,14 +349,14 @@ async def page_dashboard(request: Request, db: Session = Depends(get_db)):
     base_query = db.query(AccessPoint).filter(AccessPoint.is_active == True)
     user_aps_query = filter_aps_by_user(base_query, user)
 
-    total_aps = user_aps_query.count()
-    online_aps = user_aps_query.filter(AccessPoint.is_online == True).count()
+    # Ambil AP satu kali saja, hitung total & online di memori (hemat 2 query COUNT)
+    aps = user_aps_query.order_by(AccessPoint.site, AccessPoint.name).all()
+    total_aps = len(aps)
+    online_aps = sum(1 for ap in aps if ap.is_online)
     offline_aps = total_aps - online_aps
-    active_schedules = db.query(RebootSchedule).filter(RebootSchedule.is_enabled == True).count()
+    active_schedules = db.query(RebootSchedule.id).filter(RebootSchedule.is_enabled == True).count()
 
     online_pct = int((online_aps / total_aps * 100)) if total_aps > 0 else 0
-
-    aps = user_aps_query.order_by(AccessPoint.site, AccessPoint.name).all()
     recent_logs = db.query(RebootLog).order_by(desc(RebootLog.timestamp)).limit(10).all()
 
     return templates.TemplateResponse(
@@ -447,15 +447,16 @@ async def page_schedules(request: Request, db: Session = Depends(get_db)):
 
     schedules = db.query(RebootSchedule).order_by(RebootSchedule.hour, RebootSchedule.minute).all()
     
-    # Ambil sites yang relevan untuk target
-    all_aps = filter_aps_by_user(db.query(AccessPoint), user).all()
-    existing_sites = [ap.site for ap in all_aps if ap.site]
+    # Ambil sites & groups unik secara cepat tanpa memuat seluruh model AP ke memori
+    distinct_sites = filter_aps_by_user(db.query(AccessPoint.site).distinct(), user).all()
+    existing_sites = [s[0] for s in distinct_sites if s[0]]
     if user.role == "superadmin" or user.allowed_sites == "*":
         sites = sorted(list(set(existing_sites)))
     else:
         user_sites = [s.strip() for s in (user.allowed_sites or "").split(",") if s.strip()]
         sites = sorted(list(set(existing_sites) | set(user_sites)))
-    groups = sorted(list(set([ap.group for ap in all_aps if ap.group])))
+    distinct_groups = filter_aps_by_user(db.query(AccessPoint.group).distinct(), user).all()
+    groups = sorted(list(set([g[0] for g in distinct_groups if g[0]])))
 
     return templates.TemplateResponse(
         request=request,
@@ -492,13 +493,20 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
-    base_query = db.query(NetworkDevice).order_by(NetworkDevice.site, NetworkDevice.name)
+    # Solusi N+1 query: selectinload interfaces agar seluruh interface termuat dalam 1 query SQL
+    base_query = (
+        db.query(NetworkDevice)
+        .options(selectinload(NetworkDevice.interfaces))
+        .order_by(NetworkDevice.site, NetworkDevice.name)
+    )
     dev_query = filter_devices_by_user(base_query, user)
     devices = dev_query.all()
 
-    # Sites list
-    all_aps = filter_aps_by_user(db.query(AccessPoint), user).all()
-    existing_sites = [ap.site for ap in all_aps if ap.site] + [d.site for d in devices if d.site]
+    # Sites list (distinct query cepat tanpa memuat seluruh model AP)
+    ap_sites_q = filter_aps_by_user(db.query(AccessPoint.site).distinct(), user).all()
+    ap_sites = [s[0] for s in ap_sites_q if s[0]]
+    dev_sites = [d.site for d in devices if d.site]
+    existing_sites = ap_sites + dev_sites
     if user.role == "superadmin" or user.allowed_sites == "*":
         sites = sorted(list(set(existing_sites)))
         if not sites:
