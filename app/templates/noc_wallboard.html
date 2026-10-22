@@ -38,86 +38,61 @@
 
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background-color: var(--bg-deep);
+            background-color: #060913;
             color: #f1f5f9;
             margin: 0;
             padding: 0;
             min-height: 100vh;
             overflow-x: hidden;
-            background-image: 
-                radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.12) 0px, transparent 40%),
-                radial-gradient(circle at 90% 15%, rgba(6, 182, 212, 0.1) 0px, transparent 40%),
-                radial-gradient(circle at 50% 90%, rgba(168, 85, 247, 0.08) 0px, transparent 50%);
-            background-attachment: fixed;
         }
 
         .font-mono {
             font-family: 'JetBrains Mono', monospace;
         }
 
-        /* Ambient scanline & grid effects for NOC */
+        /* Ambient scanline for NOC (Ringan & Zero-GPU Load) */
         .noc-grid-overlay {
-            background-image: linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-            background-size: 32px 32px;
+            background-color: #060913;
         }
 
-        /* Glassmorphic Cards */
+        /* TV Ultra-Fast Glass Panel (0% GPU Blur Overhead, Solid Dark & Sharp) */
         .glass-panel {
-            background: var(--bg-card);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid var(--border-glass);
+            background: #0d1527;
+            border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 12px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-            transition: all 0.25s ease;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            contain: content;
         }
         .glass-panel:hover {
-            border-color: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.16);
         }
 
-        /* Live Pulsing Dot */
+        /* Static High-Performance Status Dots (0 CPU Keyframe Overhead) */
         .pulse-dot {
             display: inline-block;
-            width: 9px;
-            height: 9px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            position: relative;
         }
         .pulse-dot.online {
             background-color: #10b981;
-            box-shadow: 0 0 10px #10b981;
-        }
-        .pulse-dot.online::after {
-            content: '';
-            position: absolute;
-            top: -3px; left: -3px; right: -3px; bottom: -3px;
-            border-radius: 50%;
-            border: 2px solid #10b981;
-            animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
         }
         .pulse-dot.offline {
             background-color: #ef4444;
-            box-shadow: 0 0 10px #ef4444;
-        }
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); opacity: 0.9; }
-            50% { transform: scale(1.7); opacity: 0.3; }
-            100% { transform: scale(2.3); opacity: 0; }
         }
 
-        /* Glow Text & Badges */
+        /* High-Contrast Crisp Colors (0 Text-Shadow Blur Overhead) */
         .glow-cyan {
-            text-shadow: 0 0 14px rgba(6, 182, 212, 0.6);
             color: #22d3ee;
+            font-weight: 700;
         }
         .glow-emerald {
-            text-shadow: 0 0 14px rgba(16, 185, 129, 0.6);
             color: #34d399;
+            font-weight: 700;
         }
         .glow-purple {
-            text-shadow: 0 0 14px rgba(168, 85, 247, 0.6);
             color: #c084fc;
+            font-weight: 700;
         }
 
         /* Circular Sync Progress */
@@ -271,14 +246,17 @@
 </head>
 <body class="noc-grid-overlay">
 
-    <!-- TOP HEADER BAR -->
-    <header class="py-2.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex justify-content-between align-items-center flex-wrap gap-2 sticky-top" style="background: rgba(6, 9, 17, 0.88); backdrop-filter: blur(15px); z-index: 1020;">
+    <!-- TOP HEADER BAR (Hardware Accelerated & Ultra Light) -->
+    <header class="py-2.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex justify-content-between align-items-center flex-wrap gap-2 sticky-top" style="background: #080d1a; z-index: 1020;">
         <!-- Left: Brand & Radar Status -->
         <div class="d-flex align-items-center gap-3">
             <div class="d-flex align-items-center gap-2">
                 <span class="pulse-dot online"></span>
                 <span class="badge font-mono fw-bold" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 0.75rem; letter-spacing: 0.05em;">
                     LIVE NOC MONITOR
+                </span>
+                <span class="badge font-mono fw-bold d-none d-lg-inline-block" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); font-size: 0.72rem;">
+                    <i class="bi bi-lightning-charge-fill me-1"></i>TV ENGINE: 60FPS
                 </span>
             </div>
             <div class="vr bg-secondary opacity-25 d-none d-sm-block" style="height: 22px;"></div>
@@ -1011,6 +989,7 @@
         let prevLosCount = 0;
         let prevIncidentCount = 0;
         let prevTopDevOrder = '';
+        let prevTopIfaceSig = '';
         let lastKnownIncidentCount = 0;
         let isAlertBannerHidden = localStorage.getItem('noc_alert_hidden') === 'true';
 
@@ -1066,18 +1045,20 @@
         let autoCycleIndex = 0;
         const availableSites = ['', {% for s in sites %}'{{ s }}',{% endfor %}];
 
-        // Digital Clock Live
+        // Digital Clock Live (Cached Elements)
+        const nocClockEl = document.getElementById('nocClock');
+        const nocDateEl = document.getElementById('nocDate');
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
         function updateNocClock() {
             const now = new Date();
-            const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-            const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             const seconds = String(now.getSeconds()).padStart(2, '0');
             
-            document.getElementById('nocClock').innerText = `${hours}:${minutes}:${seconds} WIB`;
-            document.getElementById('nocDate').innerText = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+            if (nocClockEl) nocClockEl.innerText = `${hours}:${minutes}:${seconds} WIB`;
+            if (nocDateEl) nocDateEl.innerText = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
         }
         setInterval(updateNocClock, 1000);
         updateNocClock();
@@ -1230,29 +1211,29 @@
                         data: [],
                         borderColor: '#ef4444',
                         backgroundColor: gradRed,
-                        borderWidth: 2.5,
-                        tension: 0.35,
+                        borderWidth: 2,
+                        tension: 0.12,
                         fill: true,
-                        pointRadius: 1,
-                        pointHoverRadius: 6
+                        pointRadius: 0,
+                        pointHoverRadius: 4
                     },
                     {
                         label: 'Link Net (AS9905)',
                         data: [],
                         borderColor: '#06b6d4',
                         backgroundColor: gradCyan,
-                        borderWidth: 2.5,
-                        tension: 0.35,
+                        borderWidth: 2,
+                        tension: 0.12,
                         fill: true,
-                        pointRadius: 1,
-                        pointHoverRadius: 6
+                        pointRadius: 0,
+                        pointHoverRadius: 4
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 400 },
+                animation: false, // ZERO-ANIMATION OVERHEAD UNTUK TV (60FPS INSTANT)
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -1270,17 +1251,17 @@
                 },
                 scales: {
                     x: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
                         ticks: {
                             color: '#94a3b8',
                             font: { family: 'JetBrains Mono', size: 11 },
                             maxRotation: 0,
                             autoSkip: true,
-                            maxTicksLimit: 14
+                            maxTicksLimit: 12
                         }
                     },
                     y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.06)' },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
                         ticks: {
                             color: '#94a3b8',
                             font: { family: 'JetBrains Mono', size: 11 },
@@ -1340,7 +1321,7 @@
                 telemetryChart.data.datasets[1].borderColor = col2;
                 telemetryChart.data.datasets[1].backgroundColor = getGradientByColor(col2);
 
-                telemetryChart.update();
+                telemetryChart.update('none'); // Render langsung tanpa loop animasi
 
                 // Update label & warna legenda di bawah grafik
                 const leg1Indicator = document.getElementById('chartLeg1Indicator');
@@ -1460,7 +1441,7 @@
                         telemetryChart.data.datasets[0].data.push(Math.round(val1 * 100) / 100);
                         telemetryChart.data.datasets[1].data.shift();
                         telemetryChart.data.datasets[1].data.push(Math.round(val2 * 100) / 100);
-                        telemetryChart.update();
+                        telemetryChart.update('none');
                     }
                 }
 
@@ -1722,11 +1703,14 @@
                     if (countBadge) countBadge.innerText = `${data.top_non_bgp_devices.length} Perangkat`;
                 }
 
-                // 5. Update Device Cards Data
-                if (data.devices) {
-                    data.devices.forEach(d => {
+                // 5. Update Device Cards Data (HANYA perangkat yang aktif tampil di DOM)
+                const targetDevs = data.top_non_bgp_devices || data.devices;
+                if (targetDevs) {
+                    targetDevs.forEach(d => {
                         const rxEl = document.getElementById(`devRx_${d.id}`);
-                        if (rxEl) rxEl.innerText = d.rx_display;
+                        if (!rxEl) return; // Skip perangkat yang tidak ada di layar (menghemat ribuan DOM lookups)
+
+                        rxEl.innerText = d.rx_display;
                         const rxB = document.getElementById(`devRxByte_${d.id}`);
                         if (rxB) rxB.innerText = d.rx_byte_display;
 
@@ -1757,46 +1741,50 @@
                     });
                 }
 
-                // 6. Update Top Interfaces Leaderboard
+                // 6. Update Top Interfaces Leaderboard (Dengan memoization signature agar tidak destroy/recreate DOM setiap 5 detik)
                 if (data.top_interfaces) {
                     const ifaceContainer = document.getElementById('topInterfacesList');
                     if (ifaceContainer) {
-                        let ifaceHtml = '';
-                    data.top_interfaces.forEach(iface => {
-                        ifaceHtml += `
-                            <div class="p-2.5 rounded-2 d-flex justify-content-between align-items-center" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05);">
-                                <div>
-                                    <div class="d-flex align-items-center gap-1.5">
-                                        <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;">
-                                            ${iface.name}
-                                        </span>
-                                        ${iface.port_speed && iface.port_speed !== '-' ? `
-                                            <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; font-size: 0.65rem;">
-                                                ${iface.port_speed}
-                                            </span>
-                                        ` : ''}
-                                    </div>
-                                    <div class="text-secondary small font-mono mt-1 text-truncate" style="max-width: 170px; font-size: 0.7rem;" title="${iface.alias || iface.device_name}">
-                                        ${iface.alias || iface.device_name}
-                                    </div>
-                                </div>
-                                <div class="text-end font-mono">
-                                    <div class="fw-bold text-light" style="font-size: 0.85rem;">${iface.total_display}</div>
-                                    <div class="d-flex align-items-center justify-content-end gap-1 small mt-0.5" style="font-size: 0.68rem;">
-                                        <span class="text-cyan">↓ ${iface.rx_display}</span>
-                                        <span class="text-secondary">|</span>
-                                        <span style="color: #c084fc;">↑ ${iface.tx_display}</span>
-                                    </div>
-                                    ${iface.is_sfp && iface.sfp_rx_power !== null ? `
-                                        <div class="text-success small mt-0.5" style="font-size: 0.65rem;">
-                                            <i class="bi bi-optical-audio me-0.5"></i>${Number(iface.sfp_rx_power).toFixed(2)} dBm
+                        const ifaceSig = data.top_interfaces.map(i => `${i.name}:${i.total_display}:${i.rx_display}:${i.tx_display}`).join('|');
+                        if (ifaceSig !== prevTopIfaceSig) {
+                            let ifaceHtml = '';
+                            data.top_interfaces.forEach(iface => {
+                                ifaceHtml += `
+                                    <div class="p-2.5 rounded-2 d-flex justify-content-between align-items-center" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05);">
+                                        <div>
+                                            <div class="d-flex align-items-center gap-1.5">
+                                                <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.68rem;">
+                                                    ${iface.name}
+                                                </span>
+                                                ${iface.port_speed && iface.port_speed !== '-' ? `
+                                                    <span class="badge font-mono" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; font-size: 0.65rem;">
+                                                        ${iface.port_speed}
+                                                    </span>
+                                                ` : ''}
+                                            </div>
+                                            <div class="text-secondary small font-mono mt-1 text-truncate" style="max-width: 170px; font-size: 0.7rem;" title="${iface.alias || iface.device_name}">
+                                                ${iface.alias || iface.device_name}
+                                            </div>
                                         </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        `;
-                    });
-                    ifaceContainer.innerHTML = ifaceHtml;
+                                        <div class="text-end font-mono">
+                                            <div class="fw-bold text-light" style="font-size: 0.85rem;">${iface.total_display}</div>
+                                            <div class="d-flex align-items-center justify-content-end gap-1 small mt-0.5" style="font-size: 0.68rem;">
+                                                <span class="text-cyan">↓ ${iface.rx_display}</span>
+                                                <span class="text-secondary">|</span>
+                                                <span style="color: #c084fc;">↑ ${iface.tx_display}</span>
+                                            </div>
+                                            ${iface.is_sfp && iface.sfp_rx_power !== null ? `
+                                                <div class="text-success small mt-0.5" style="font-size: 0.65rem;">
+                                                    <i class="bi bi-optical-audio me-0.5"></i>${Number(iface.sfp_rx_power).toFixed(2)} dBm
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            ifaceContainer.innerHTML = ifaceHtml;
+                            prevTopIfaceSig = ifaceSig;
+                        }
                     }
                 }
 
@@ -1805,17 +1793,20 @@
             }
         }
 
-        // Countdown timer loop
+        // Countdown timer loop (cached DOM elements)
+        const syncTimerTextEl = document.getElementById('syncTimerText');
+        const syncRingEl = document.getElementById('syncRingProgress');
         setInterval(() => {
             countdown--;
             if (countdown <= 0) {
                 countdown = REFRESH_INTERVAL_SEC;
                 fetchTelemetry();
             }
-            document.getElementById('syncTimerText').innerText = `${countdown}s`;
-            const ring = document.getElementById('syncRingProgress');
-            const offset = (countdown / REFRESH_INTERVAL_SEC) * 60;
-            ring.style.strokeDashoffset = 60 - offset;
+            if (syncTimerTextEl) syncTimerTextEl.innerText = `${countdown}s`;
+            if (syncRingEl) {
+                const offset = (countdown / REFRESH_INTERVAL_SEC) * 60;
+                syncRingEl.style.strokeDashoffset = 60 - offset;
+            }
         }, 1000);
 
         // Initialize Alert banner toggle state on load
