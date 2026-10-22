@@ -1537,7 +1537,9 @@
                                 </div>
                             `;
                         });
+                        const savedScrollTop = topNonBgpContainer.scrollTop;
                         topNonBgpContainer.innerHTML = htmlStr;
+                        topNonBgpContainer.scrollTop = savedScrollTop;
                     }
                     const countBadge = document.getElementById('topDevCountBadge');
                     if (countBadge) countBadge.innerText = `${data.top_non_bgp_devices.length} Perangkat`;
@@ -1639,46 +1641,10 @@
             ring.style.strokeDashoffset = 60 - offset;
         }, 1000);
 
-        // Auto-Scroll Top Traffic Leaderboard for TV / Unattended screens
-        let topScrollTimer = null;
-        let isTopScrollHovered = false;
-        let topScrollSpeed = 1; // 1 pixel per tick
-
-        function initTopTrafficScroll() {
-            const container = document.getElementById('topNonBgpList');
-            if (!container) return;
-
-            container.addEventListener('mouseenter', () => { isTopScrollHovered = true; });
-            container.addEventListener('mouseleave', () => { isTopScrollHovered = false; });
-            container.addEventListener('touchstart', () => { isTopScrollHovered = true; }, { passive: true });
-            container.addEventListener('touchend', () => { 
-                setTimeout(() => { isTopScrollHovered = false; }, 3000); 
-            }, { passive: true });
-
-            if (topScrollTimer) clearInterval(topScrollTimer);
-            topScrollTimer = setInterval(() => {
-                if (isTopScrollHovered) return;
-                // Only auto-scroll if content overflows
-                if (container.scrollHeight > container.clientHeight) {
-                    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
-                        // Pause at bottom for 3s then smoothly reset to top
-                        isTopScrollHovered = true;
-                        setTimeout(() => {
-                            container.scrollTo({ top: 0, behavior: 'smooth' });
-                            setTimeout(() => { isTopScrollHovered = false; }, 1200);
-                        }, 3000);
-                    } else {
-                        container.scrollTop += topScrollSpeed;
-                    }
-                }
-            }, 60);
-        }
-
         // First initial fetch & load default history (1 Hari)
         setTimeout(() => {
             fetchTelemetry();
             reloadHistory();
-            initTopTrafficScroll();
         }, 800);
     </script>
 </body>
