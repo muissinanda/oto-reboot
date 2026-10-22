@@ -930,6 +930,67 @@ def get_nms_telemetry_payload(db: Session):
     non_bgp_devices = [d for d in devices_data if not d.get("is_bgp")]
     top_non_bgp_devices = sorted(non_bgp_devices, key=lambda x: x.get("total_bw_mbps", 0.0), reverse=True)
 
+    # -------------------------------------------------------------
+    # DAFTAR INSIDEN DETAIL (FIBER LOS, PERANGKAT OFFLINE, BGP DOWN)
+    # Menyediakan informasi rinci: Site, Nama Perangkat, dan Port
+    # -------------------------------------------------------------
+    incidents = []
+
+    # 1. Deteksi Fiber Link Putus (LOS)
+    for iface in all_interfaces:
+        if iface.get("is_sfp") and iface.get("sfp_rx_loss"):
+            alias = iface.get("alias")
+            alias_display = f" ({alias})" if alias and alias != "-" else ""
+            port_name = iface.get("name", "-")
+            device_name = iface.get("device_name", "-")
+            site = iface.get("site") or "Default"
+            pwr = iface.get("sfp_rx_power")
+
+            incidents.append({
+                "type": "fiber_los",
+                "badge": "FIBER PUTUS (LOS)",
+                "site": site,
+                "device_name": device_name,
+                "port_name": port_name,
+                "alias": alias or "-",
+                "port_display": f"{port_name}{alias_display}",
+                "sfp_rx_power": pwr,
+                "desc": "Link Fiber Putus (LOS / Loss of Signal)",
+                "detail_text": f"Site: {site} • Perangkat: {device_name} • Port: {port_name}{alias_display}"
+            })
+
+    # 2. Deteksi Perangkat Offline
+    for d in devices:
+        if not d.is_online:
+            incidents.append({
+                "type": "device_offline",
+                "badge": "PERANGKAT OFFLINE",
+                "site": d.site or "Default",
+                "device_name": d.name,
+                "port_name": "-",
+                "alias": "-",
+                "port_display": f"IP {d.ip}",
+                "sfp_rx_power": None,
+                "desc": "Perangkat Offline (Tidak merespon ICMP/SNMP)",
+                "detail_text": f"Site: {d.site or 'Default'} • Perangkat: {d.name} • IP: {d.ip}"
+            })
+
+    # 3. Deteksi Sesi BGP Uplink Down (hanya jika peer terdaftar)
+    for up in uplinks_data:
+        if up.get("peer_ip") and up.get("peer_ip") != "-" and not up.get("is_established"):
+            incidents.append({
+                "type": "bgp_down",
+                "badge": "BGP DOWN",
+                "site": "Core / BGP",
+                "device_name": "BGP Router",
+                "port_name": up.get("port_name", "-"),
+                "alias": up.get("name", "-"),
+                "port_display": up.get("port_name", "-"),
+                "sfp_rx_power": up.get("sfp_rx_power"),
+                "desc": f"Sesi BGP {up.get('name')} Down (Status: {up.get('status', 'down')})",
+                "detail_text": f"Site: Core • Perangkat: BGP Router • Port: {up.get('port_name', '-')} ({up.get('name')})"
+            })
+
     return {
         "stats": {
             "total_devices": total_devices,
@@ -973,6 +1034,7 @@ def get_nms_telemetry_payload(db: Session):
         "devices": devices_data,
         "top_non_bgp_devices": top_non_bgp_devices,
         "top_interfaces": top_interfaces,
+        "incidents": incidents,
         "sites": sites
     }
 
@@ -992,6 +1054,7 @@ async def page_noc_wallboard(request: Request, db: Session = Depends(get_db)):
             "devices": telemetry["devices"],
             "top_non_bgp_devices": telemetry.get("top_non_bgp_devices", []),
             "top_interfaces": telemetry["top_interfaces"],
+            "incidents": telemetry.get("incidents", []),
             "sites": telemetry["sites"]
         }
     )

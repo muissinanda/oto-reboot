@@ -326,13 +326,52 @@
 
     <!-- CRITICAL ALERTS BANNER -->
     <div class="container-fluid px-3 px-md-4 mt-3">
-        <div class="noc-alert-banner" id="alertBanner">
-            <div class="d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center gap-2 text-danger fw-bold">
+        <div class="noc-alert-banner p-3 rounded-3" id="alertBanner" style="{% if incidents|length > 0 %}display: block;{% else %}display: none;{% endif %}">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2 text-danger fw-bold font-mono">
                     <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-                    <span id="alertBannerText">PERINGATAN KRITIS: Link Fiber Optik atau Perangkat Mengalami Gangguan!</span>
+                    <span id="alertBannerText" class="fs-6">
+                        {% if incidents|length == 1 %}
+                            PERINGATAN NOC: <b>{{ incidents[0].desc }}</b> di Site <span class="text-warning text-uppercase">[{{ incidents[0].site }}]</span> • Perangkat <span class="text-light">[{{ incidents[0].device_name }}]</span> • Port <span class="text-cyan">[{{ incidents[0].port_display }}]</span>! Segera periksa koneksi!
+                        {% elif incidents|length > 1 %}
+                            PERINGATAN NOC: <b>{{ incidents|length }} Gangguan Terdeteksi</b> pada Jaringan! Periksa rincian di bawah:
+                        {% else %}
+                            PERINGATAN KRITIS: Link Fiber Optik atau Perangkat Mengalami Gangguan!
+                        {% endif %}
+                    </span>
                 </div>
-                <span class="badge bg-danger font-mono" id="alertBannerCount">0 Incident</span>
+                <span class="badge bg-danger font-mono fs-6 px-2.5 py-1" id="alertBannerCount">
+                    {{ incidents|length }} Insiden Aktif
+                </span>
+            </div>
+
+            <!-- DETAILED INCIDENT CARDS / CHIPS -->
+            <div id="alertBannerDetails" class="mt-2.5 pt-2.5 border-top border-danger border-opacity-25 d-flex flex-column gap-2" {% if incidents|length == 0 %}style="display: none;"{% endif %}>
+                {% for inc in incidents %}
+                <div class="d-flex align-items-center justify-content-between p-2 px-3 rounded-2 font-mono flex-wrap gap-2" style="background: rgba(0, 0, 0, 0.45); border-left: 4px solid #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="badge bg-danger font-mono text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.04em;">{{ inc.badge }}</span>
+                        <span class="text-secondary">|</span>
+                        <span>Site: <strong class="text-warning text-uppercase" style="font-size: 0.88rem;">[{{ inc.site }}]</strong></span>
+                        <span class="text-secondary">|</span>
+                        <span>Perangkat: <strong class="text-light">[{{ inc.device_name }}]</strong></span>
+                        {% if inc.port_name != '-' %}
+                            <span class="text-secondary">|</span>
+                            <span>Port: <strong class="text-cyan">[{{ inc.port_display }}]</strong></span>
+                        {% else %}
+                            <span class="text-secondary">|</span>
+                            <span>Info: <strong class="text-cyan">[{{ inc.port_display }}]</strong></span>
+                        {% endif %}
+                    </div>
+                    <div class="text-danger small fw-bold font-mono d-flex align-items-center gap-1.5">
+                        <i class="bi bi-x-circle-fill"></i>
+                        <span>{{ inc.desc }}</span>
+                        {% if inc.sfp_rx_power is not none %}
+                            <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.68rem;">{{ inc.sfp_rx_power|round(2) }} dBm</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
     </div>
@@ -934,6 +973,7 @@
         let audioAlertEnabled = false;
         let prevOfflineCount = 0;
         let prevLosCount = 0;
+        let prevIncidentCount = 0;
 
         // Auto-Cycle state for TV
         let autoCycleTimer = null;
@@ -1277,26 +1317,65 @@
                     }
                 }
 
-                // 3. Audio Alarm Trigger if incident detected
-                if ((stats.offline_devices > prevOfflineCount && stats.offline_devices > 0) || 
-                    (sfp && sfp.los_count > prevLosCount && sfp.los_count > 0)) {
-                    playNocAlertTone();
-                }
-                prevOfflineCount = stats.offline_devices;
-                prevLosCount = sfp ? sfp.los_count : 0;
-
-                // 4. Critical Alert Banner
+                // 3. Critical Alert Banner with Detailed Incidents (Site, Perangkat, Port)
                 const banner = document.getElementById('alertBanner');
-                if (stats.offline_devices > 0 || (sfp && sfp.los_count > 0)) {
+                const bannerText = document.getElementById('alertBannerText');
+                const bannerCount = document.getElementById('alertBannerCount');
+                const bannerDetails = document.getElementById('alertBannerDetails');
+
+                const incidents = data.incidents || [];
+                if (incidents.length > 0) {
                     banner.style.display = 'block';
-                    let issues = [];
-                    if (stats.offline_devices > 0) issues.push(`${stats.offline_devices} Perangkat OFFLINE`);
-                    if (sfp && sfp.los_count > 0) issues.push(`${sfp.los_count} Link Fiber Putus (LOS)`);
-                    document.getElementById('alertBannerText').innerText = `PERINGATAN NOC: ${issues.join(' & ')}! Segera periksa koneksi!`;
-                    document.getElementById('alertBannerCount').innerText = `${stats.offline_devices + (sfp ? sfp.los_count : 0)} Insiden Aktif`;
+                    bannerCount.innerText = `${incidents.length} Insiden Aktif`;
+
+                    if (incidents.length === 1) {
+                        const inc = incidents[0];
+                        bannerText.innerHTML = `PERINGATAN NOC: <b>${inc.desc}</b> di Site <span class="text-warning text-uppercase">[${inc.site}]</span> • Perangkat <span class="text-light">[${inc.device_name}]</span> • Port <span class="text-cyan">[${inc.port_display}]</span>! Segera periksa koneksi!`;
+                    } else {
+                        bannerText.innerHTML = `PERINGATAN NOC: <b>${incidents.length} Gangguan Terdeteksi</b> pada Jaringan! Periksa rincian di bawah:`;
+                    }
+
+                    let detailsHtml = '';
+                    incidents.forEach(inc => {
+                        const pwrBadge = (inc.sfp_rx_power !== null && inc.sfp_rx_power !== undefined) 
+                            ? `<span class="badge ms-1" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.68rem;">${Number(inc.sfp_rx_power).toFixed(2)} dBm</span>` 
+                            : '';
+                        const portPart = inc.port_name !== '-' 
+                            ? `<span class="text-secondary">|</span><span>Port: <strong class="text-cyan">[${inc.port_display}]</strong></span>` 
+                            : `<span class="text-secondary">|</span><span>Info: <strong class="text-cyan">[${inc.port_display}]</strong></span>`;
+
+                        detailsHtml += `
+                            <div class="d-flex align-items-center justify-content-between p-2 px-3 rounded-2 font-mono flex-wrap gap-2" style="background: rgba(0, 0, 0, 0.45); border-left: 4px solid #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="badge bg-danger font-mono text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.04em;">${inc.badge}</span>
+                                    <span class="text-secondary">|</span>
+                                    <span>Site: <strong class="text-warning text-uppercase" style="font-size: 0.88rem;">[${inc.site}]</strong></span>
+                                    <span class="text-secondary">|</span>
+                                    <span>Perangkat: <strong class="text-light">[${inc.device_name}]</strong></span>
+                                    ${portPart}
+                                </div>
+                                <div class="text-danger small fw-bold font-mono d-flex align-items-center gap-1.5">
+                                    <i class="bi bi-x-circle-fill"></i>
+                                    <span>${inc.desc}</span>
+                                    ${pwrBadge}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    if (bannerDetails) {
+                        bannerDetails.style.display = 'flex';
+                        bannerDetails.innerHTML = detailsHtml;
+                    }
+
+                    // Trigger sound alarm if new incidents appear
+                    if (incidents.length > prevIncidentCount) {
+                        playNocAlertTone();
+                    }
                 } else {
                     banner.style.display = 'none';
+                    if (bannerDetails) bannerDetails.innerHTML = '';
                 }
+                prevIncidentCount = incidents.length;
 
                 // 5. Update Uplinks Transit Telemetry (Telkom, Linknet, IDREN)
                 if (data.uplinks) {
