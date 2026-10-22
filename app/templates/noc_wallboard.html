@@ -614,22 +614,22 @@
                                 <i class="bi bi-graph-up-arrow fs-5"></i>
                             </div>
                             <div>
-                                <h2 class="h5 mb-0 fw-extrabold text-light font-mono">HISTORI & TELEMETRI TRAFFIC</h2>
+                                <h2 class="h5 mb-0 fw-extrabold text-light font-mono">TRAFIK TRANSIT ISP (TELKOM & LINK NET)</h2>
                                 <div class="text-secondary small font-mono mt-0.5" style="font-size: 0.72rem;">
-                                    Grafik Live Throughput Bandwidth Jaringan & Histori Trafik Multi-Rentang
+                                    Telemetri Throughput & Histori Khusus Telkom Indonesia (AS7713) & Link Net (AS9905)
                                 </div>
                             </div>
                         </div>
                         
                         <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <!-- Filter Perangkat untuk Histori -->
+                            <!-- Filter Khusus ISP (Telkom & Link Net) -->
                             <div class="d-flex align-items-center gap-1.5 font-mono small" style="font-size: 0.75rem;">
-                                <span class="text-secondary">Sumber:</span>
-                                <select id="chartDeviceSelect" class="form-select form-select-sm py-1 px-2.5" style="font-size: 0.75rem; width: auto; background: rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.15); color: #e2e8f0;" onchange="reloadHistory()">
-                                    <option value="">Semua Perangkat (Fleet Total)</option>
-                                    {% for d in devices %}
-                                        <option value="{{ d.id }}">{{ d.name }} ({{ d.site }})</option>
-                                    {% endfor %}
+                                <span class="text-secondary"><i class="bi bi-filter me-1"></i>Pilihan ISP:</span>
+                                <select id="chartIspSelect" class="form-select form-select-sm py-1 px-2.5 fw-bold" style="font-size: 0.75rem; width: auto; background: rgba(0,0,0,0.5); border-color: rgba(255,255,255,0.18); color: #f8fafc;" onchange="reloadHistory()">
+                                    <option value="compare" selected>Komparasi: Telkom vs Link Net</option>
+                                    <option value="all_isp">Transit Total (Telkom + Link Net)</option>
+                                    <option value="telkom">Telkom Indonesia (AS7713)</option>
+                                    <option value="linknet">Link Net (AS9905)</option>
                                 </select>
                             </div>
 
@@ -678,11 +678,13 @@
                     </div>
 
                     <div class="d-flex justify-content-center align-items-center gap-4 mt-3 font-mono small" style="font-size: 0.78rem;">
-                        <span class="d-flex align-items-center gap-1.5 text-cyan">
-                            <span style="display:inline-block; width: 12px; height: 12px; background: #06b6d4; border-radius: 3px;"></span> Download (Rx)
+                        <span class="d-flex align-items-center gap-1.5" id="chartLeg1Container">
+                            <span id="chartLeg1Indicator" style="display:inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 3px;"></span>
+                            <span id="chartLeg1Label" class="fw-bold" style="color: #ef4444;">Telkom Indonesia (AS7713)</span>
                         </span>
-                        <span class="d-flex align-items-center gap-1.5" style="color: #c084fc;">
-                            <span style="display:inline-block; width: 12px; height: 12px; background: #a855f7; border-radius: 3px;"></span> Upload (Tx)
+                        <span class="d-flex align-items-center gap-1.5" id="chartLeg2Container">
+                            <span id="chartLeg2Indicator" style="display:inline-block; width: 12px; height: 12px; background: #06b6d4; border-radius: 3px;"></span>
+                            <span id="chartLeg2Label" class="fw-bold" style="color: #06b6d4;">Link Net (AS9905)</span>
                         </span>
                     </div>
                 </div>
@@ -1189,15 +1191,34 @@
             }
         }
 
-        // Initialize Real-time & Historical Chart.js
+        // Initialize Real-time & Historical Chart.js for ISP Telkom & Link Net
         const ctx = document.getElementById('telemetryChart').getContext('2d');
-        const gradientRx = ctx.createLinearGradient(0, 0, 0, 360);
-        gradientRx.addColorStop(0, 'rgba(6, 182, 212, 0.45)');
-        gradientRx.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+        
+        // Gradients untuk Model ISP
+        const gradRed = ctx.createLinearGradient(0, 0, 0, 360);
+        gradRed.addColorStop(0, 'rgba(239, 68, 68, 0.45)');
+        gradRed.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
 
-        const gradientTx = ctx.createLinearGradient(0, 0, 0, 360);
-        gradientTx.addColorStop(0, 'rgba(168, 85, 247, 0.45)');
-        gradientTx.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
+        const gradCyan = ctx.createLinearGradient(0, 0, 0, 360);
+        gradCyan.addColorStop(0, 'rgba(6, 182, 212, 0.45)');
+        gradCyan.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+
+        const gradPurple = ctx.createLinearGradient(0, 0, 0, 360);
+        gradPurple.addColorStop(0, 'rgba(168, 85, 247, 0.45)');
+        gradPurple.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
+
+        const gradAmber = ctx.createLinearGradient(0, 0, 0, 360);
+        gradAmber.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
+        gradAmber.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+
+        function getGradientByColor(col) {
+            if (!col) return gradRed;
+            if (col === '#ef4444' || col.includes('239, 68, 68')) return gradRed;
+            if (col === '#06b6d4' || col.includes('6, 182, 212')) return gradCyan;
+            if (col === '#a855f7' || col.includes('168, 85, 247')) return gradPurple;
+            if (col === '#f59e0b' || col.includes('245, 158, 11')) return gradAmber;
+            return gradCyan;
+        }
 
         const telemetryChart = new Chart(ctx, {
             type: 'line',
@@ -1205,10 +1226,10 @@
                 labels: [],
                 datasets: [
                     {
-                        label: 'Download',
+                        label: 'Telkom Indonesia (AS7713)',
                         data: [],
-                        borderColor: '#06b6d4',
-                        backgroundColor: gradientRx,
+                        borderColor: '#ef4444',
+                        backgroundColor: gradRed,
                         borderWidth: 2.5,
                         tension: 0.35,
                         fill: true,
@@ -1216,10 +1237,10 @@
                         pointHoverRadius: 6
                     },
                     {
-                        label: 'Upload',
+                        label: 'Link Net (AS9905)',
                         data: [],
-                        borderColor: '#a855f7',
-                        backgroundColor: gradientTx,
+                        borderColor: '#06b6d4',
+                        backgroundColor: gradCyan,
                         borderWidth: 2.5,
                         tension: 0.35,
                         fill: true,
@@ -1231,7 +1252,7 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 450 },
+                animation: { duration: 400 },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -1293,21 +1314,50 @@
             reloadHistory();
         }
 
-        // Fetch Historical Data from API
+        // Fetch Historical Data from API khusus ISP Telkom & Link Net
         async function reloadHistory() {
             try {
-                const devSelect = document.getElementById('chartDeviceSelect');
-                const devId = devSelect ? devSelect.value : '';
-                const url = `/api/nms/public/history?range=${currentRange}&device_id=${devId}&site=${encodeURIComponent(selectedSite)}`;
+                const ispSelect = document.getElementById('chartIspSelect');
+                const ispVal = ispSelect ? ispSelect.value : 'compare';
+                const url = `/api/nms/public/history?range=${currentRange}&isp=${encodeURIComponent(ispVal)}`;
                 
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
 
                 telemetryChart.data.labels = data.labels || [];
-                telemetryChart.data.datasets[0].data = data.rx || [];
-                telemetryChart.data.datasets[1].data = data.tx || [];
+
+                const col1 = data.dataset1_color || '#ef4444';
+                const col2 = data.dataset2_color || '#06b6d4';
+
+                telemetryChart.data.datasets[0].label = data.dataset1_label || 'Telkom Indonesia';
+                telemetryChart.data.datasets[0].data = data.dataset1 || data.rx || [];
+                telemetryChart.data.datasets[0].borderColor = col1;
+                telemetryChart.data.datasets[0].backgroundColor = getGradientByColor(col1);
+
+                telemetryChart.data.datasets[1].label = data.dataset2_label || 'Link Net';
+                telemetryChart.data.datasets[1].data = data.dataset2 || data.tx || [];
+                telemetryChart.data.datasets[1].borderColor = col2;
+                telemetryChart.data.datasets[1].backgroundColor = getGradientByColor(col2);
+
                 telemetryChart.update();
+
+                // Update label & warna legenda di bawah grafik
+                const leg1Indicator = document.getElementById('chartLeg1Indicator');
+                const leg1Label = document.getElementById('chartLeg1Label');
+                const leg2Indicator = document.getElementById('chartLeg2Indicator');
+                const leg2Label = document.getElementById('chartLeg2Label');
+
+                if (leg1Indicator && leg1Label) {
+                    leg1Indicator.style.background = col1;
+                    leg1Label.style.color = col1;
+                    leg1Label.innerText = data.dataset1_label || 'Telkom Indonesia (AS7713)';
+                }
+                if (leg2Indicator && leg2Label) {
+                    leg2Indicator.style.background = col2;
+                    leg2Label.style.color = col2;
+                    leg2Label.innerText = data.dataset2_label || 'Link Net (AS9905)';
+                }
 
                 document.getElementById('histPeakVal').innerText = data.max_display || '-';
                 document.getElementById('histAvgVal').innerText = data.avg_display || '-';
@@ -1367,14 +1417,49 @@
                         }
                     }
 
-                    // If currently on "live" range, push latest point smoothly
+                    // If currently on "live" range, push latest point smoothly khusus ISP Telkom & Link Net
                     if (currentRange === 'live') {
+                        const uplinks = data.uplinks || [];
+                        const telkom = uplinks.find(u => u.key === 'telkom' || u.asn === 7713) || {};
+                        const linknet = uplinks.find(u => u.key === 'linknet' || u.asn === 9905) || {};
+
+                        const tRx = parseFloat(telkom.rx_mbps || 0);
+                        const tTx = parseFloat(telkom.tx_mbps || 0);
+                        const tTot = parseFloat(telkom.total_mbps || (tRx + tTx));
+
+                        const lRx = parseFloat(linknet.rx_mbps || 0);
+                        const lTx = parseFloat(linknet.tx_mbps || 0);
+                        const lTot = parseFloat(linknet.total_mbps || (lRx + lTx));
+
+                        const ispSelect = document.getElementById('chartIspSelect');
+                        const ispMode = ispSelect ? ispSelect.value : 'compare';
+
+                        let val1 = 0.0;
+                        let val2 = 0.0;
+
+                        if (ispMode === 'compare') {
+                            val1 = tTot;
+                            val2 = lTot;
+                        } else if (ispMode === 'all_isp') {
+                            val1 = tRx + lRx;
+                            val2 = tTx + lTx;
+                        } else if (ispMode === 'telkom') {
+                            val1 = tRx;
+                            val2 = tTx;
+                        } else if (ispMode === 'linknet') {
+                            val1 = lRx;
+                            val2 = lTx;
+                        } else {
+                            val1 = tTot;
+                            val2 = lTot;
+                        }
+
                         telemetryChart.data.labels.shift();
                         telemetryChart.data.labels.push(new Date().toLocaleTimeString('id-ID'));
                         telemetryChart.data.datasets[0].data.shift();
-                        telemetryChart.data.datasets[0].data.push(stats.total_rx_mbps);
+                        telemetryChart.data.datasets[0].data.push(Math.round(val1 * 100) / 100);
                         telemetryChart.data.datasets[1].data.shift();
-                        telemetryChart.data.datasets[1].data.push(stats.total_tx_mbps);
+                        telemetryChart.data.datasets[1].data.push(Math.round(val2 * 100) / 100);
                         telemetryChart.update();
                     }
                 }
