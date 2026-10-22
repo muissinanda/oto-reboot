@@ -529,87 +529,220 @@
             </div>
         </div>
 
-        <!-- FULL-WIDTH DEDICATED TRAFFIC HISTORY & TELEMETRY CHART (CENTERPIECE, BIG & CLEAR) -->
-        <div class="mb-4" id="historySection">
-            <div class="glass-panel p-3 p-md-4 position-relative overflow-hidden">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                    <div class="d-flex align-items-center gap-2.5">
-                        <div class="p-2 rounded-2" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee;">
-                            <i class="bi bi-graph-up-arrow fs-5"></i>
+        <!-- ROW: TRAFFIC HISTORY CHART (LEFT) & LIVE TOP TRAFFIC NON-BGP LEADERBOARD (RIGHT) -->
+        <div class="row g-3 mb-4" id="historySection">
+            
+            <!-- LEFT: TRAFFIC HISTORY & TELEMETRY CHART -->
+            <div class="col-12 col-xl-8">
+                <div class="glass-panel p-3 p-md-4 position-relative overflow-hidden h-100 d-flex flex-column justify-content-between">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <div class="d-flex align-items-center gap-2.5">
+                            <div class="p-2 rounded-2" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee;">
+                                <i class="bi bi-graph-up-arrow fs-5"></i>
+                            </div>
+                            <div>
+                                <h2 class="h5 mb-0 fw-extrabold text-light font-mono">HISTORI & TELEMETRI TRAFFIC</h2>
+                                <div class="text-secondary small font-mono mt-0.5" style="font-size: 0.72rem;">
+                                    Grafik Live Throughput Bandwidth Jaringan & Histori Trafik Multi-Rentang
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <h2 class="h5 mb-0 fw-extrabold text-light font-mono">HISTORI & TELEMETRI TRAFFIC</h2>
-                            <div class="text-secondary small font-mono mt-0.5" style="font-size: 0.72rem;">
-                                Grafik Live Throughput Bandwidth Jaringan & Histori Trafik Multi-Rentang
+                        
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <!-- Filter Perangkat untuk Histori -->
+                            <div class="d-flex align-items-center gap-1.5 font-mono small" style="font-size: 0.75rem;">
+                                <span class="text-secondary">Sumber:</span>
+                                <select id="chartDeviceSelect" class="form-select form-select-sm py-1 px-2.5" style="font-size: 0.75rem; width: auto; background: rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.15); color: #e2e8f0;" onchange="reloadHistory()">
+                                    <option value="">Semua Perangkat (Fleet Total)</option>
+                                    {% for d in devices %}
+                                        <option value="{{ d.id }}">{{ d.name }} ({{ d.site }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Range Selector Pills: Live, 1d, 3d, 7d, 30d -->
+                            <div class="d-flex align-items-center gap-1" id="historyRangeGroup">
+                                <button class="range-pill px-2.5 py-1" data-range="live" onclick="changeHistoryRange('live', this)">
+                                    <span class="pulse-dot online me-1" style="width: 7px; height: 7px;"></span>Live
+                                </button>
+                                <button class="range-pill active px-2.5 py-1" data-range="1d" onclick="changeHistoryRange('1d', this)">1 Hari</button>
+                                <button class="range-pill px-2.5 py-1" data-range="3d" onclick="changeHistoryRange('3d', this)">3 Hari</button>
+                                <button class="range-pill px-2.5 py-1" data-range="7d" onclick="changeHistoryRange('7d', this)">Seminggu</button>
+                                <button class="range-pill px-2.5 py-1" data-range="30d" onclick="changeHistoryRange('30d', this)">30 Hari</button>
+                            </div>
+
+                            <span class="badge px-2.5 py-1.5" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.72rem;" id="chartRangeBadge">
+                                24 Jam Terakhir
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Canvas Chart (TALL & BIG: 380px) -->
+                    <div style="height: 380px; position: relative;">
+                        <canvas id="telemetryChart"></canvas>
+                    </div>
+
+                    <!-- Legend & Peak/Avg/Volume Stat Highlights -->
+                    <div class="row g-3 mt-2 pt-3 border-top border-light border-opacity-10 text-center font-mono">
+                        <div class="col-12 col-md-4">
+                            <div class="p-2.5 rounded-3 h-100" style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2);">
+                                <div class="text-secondary small font-mono" style="font-size: 0.72rem;">TRAFFIC PUNCAK (PEAK)</div>
+                                <div class="fs-4 fw-extrabold glow-cyan mt-1" id="histPeakVal">-</div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="p-2.5 rounded-3 h-100" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                                <div class="text-secondary small font-mono" style="font-size: 0.72rem;">RATA-RATA (AVERAGE)</div>
+                                <div class="fs-4 fw-extrabold text-light mt-1" id="histAvgVal">-</div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="p-2.5 rounded-3 h-100" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2);">
+                                <div class="text-secondary small font-mono" style="font-size: 0.72rem;">TOTAL VOLUME TRANSFER</div>
+                                <div class="fs-4 fw-extrabold text-success mt-1" id="histVolumeVal">-</div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <!-- Filter Perangkat untuk Histori -->
-                        <div class="d-flex align-items-center gap-1.5 font-mono small" style="font-size: 0.75rem;">
-                            <span class="text-secondary">Sumber:</span>
-                            <select id="chartDeviceSelect" class="form-select form-select-sm py-1 px-2.5" style="font-size: 0.75rem; width: auto; background: rgba(0,0,0,0.4); border-color: rgba(255,255,255,0.15); color: #e2e8f0;" onchange="reloadHistory()">
-                                <option value="">Semua Perangkat (Fleet Total)</option>
-                                {% for d in devices %}
-                                    <option value="{{ d.id }}">{{ d.name }} ({{ d.site }})</option>
-                                {% endfor %}
-                            </select>
-                        </div>
 
-                        <!-- Range Selector Pills: Live, 1d, 3d, 7d, 30d -->
-                        <div class="d-flex align-items-center gap-1" id="historyRangeGroup">
-                            <button class="range-pill px-2.5 py-1" data-range="live" onclick="changeHistoryRange('live', this)">
-                                <span class="pulse-dot online me-1" style="width: 7px; height: 7px;"></span>Live
-                            </button>
-                            <button class="range-pill active px-2.5 py-1" data-range="1d" onclick="changeHistoryRange('1d', this)">1 Hari</button>
-                            <button class="range-pill px-2.5 py-1" data-range="3d" onclick="changeHistoryRange('3d', this)">3 Hari</button>
-                            <button class="range-pill px-2.5 py-1" data-range="7d" onclick="changeHistoryRange('7d', this)">Seminggu</button>
-                            <button class="range-pill px-2.5 py-1" data-range="30d" onclick="changeHistoryRange('30d', this)">30 Hari</button>
-                        </div>
-
-                        <span class="badge px-2.5 py-1.5" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; font-size: 0.72rem;" id="chartRangeBadge">
-                            24 Jam Terakhir
+                    <div class="d-flex justify-content-center align-items-center gap-4 mt-3 font-mono small" style="font-size: 0.78rem;">
+                        <span class="d-flex align-items-center gap-1.5 text-cyan">
+                            <span style="display:inline-block; width: 12px; height: 12px; background: #06b6d4; border-radius: 3px;"></span> Download (Rx)
+                        </span>
+                        <span class="d-flex align-items-center gap-1.5" style="color: #c084fc;">
+                            <span style="display:inline-block; width: 12px; height: 12px; background: #a855f7; border-radius: 3px;"></span> Upload (Tx)
                         </span>
                     </div>
                 </div>
+            </div>
 
-                <!-- Canvas Chart (TALL & BIG: 380px) -->
-                <div style="height: 380px; position: relative;">
-                    <canvas id="telemetryChart"></canvas>
-                </div>
-
-                <!-- Legend & Peak/Avg/Volume Stat Highlights -->
-                <div class="row g-3 mt-2 pt-3 border-top border-light border-opacity-10 text-center font-mono">
-                    <div class="col-12 col-md-4">
-                        <div class="p-2.5 rounded-3 h-100" style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2);">
-                            <div class="text-secondary small font-mono" style="font-size: 0.72rem;">TRAFFIC PUNCAK (PEAK)</div>
-                            <div class="fs-4 fw-extrabold glow-cyan mt-1" id="histPeakVal">-</div>
+            <!-- RIGHT: LIVE TOP TRAFFIC CORE & DISTRIBUSI NETWORK (NON-BGP) -->
+            <div class="col-12 col-xl-4">
+                <div class="glass-panel p-3 p-md-3.5 h-100 d-flex flex-column shadow-lg border border-light border-opacity-10 position-relative overflow-hidden">
+                    
+                    <!-- Header -->
+                    <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom border-light border-opacity-10 flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="p-1.5 rounded-2" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                                <i class="bi bi-speedometer2 fs-5"></i>
+                            </div>
+                            <div>
+                                <h2 class="h6 mb-0 fw-bold text-light font-mono">TOP TRAFFIC NETWORK</h2>
+                                <div class="text-secondary small font-mono" style="font-size: 0.68rem;">
+                                    Core & Distribusi (Non-BGP)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-1.5">
+                            <span class="badge font-mono" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-size: 0.68rem; border: 1px solid rgba(245, 158, 11, 0.3);">
+                                <span class="pulse-dot online me-1" style="width: 6px; height: 6px;"></span>Live Highest
+                            </span>
                         </div>
                     </div>
-                    <div class="col-12 col-md-4">
-                        <div class="p-2.5 rounded-3 h-100" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
-                            <div class="text-secondary small font-mono" style="font-size: 0.72rem;">RATA-RATA (AVERAGE)</div>
-                            <div class="fs-4 fw-extrabold text-light mt-1" id="histAvgVal">-</div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-4">
-                        <div class="p-2.5 rounded-3 h-100" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2);">
-                            <div class="text-secondary small font-mono" style="font-size: 0.72rem;">TOTAL VOLUME TRANSFER</div>
-                            <div class="fs-4 fw-extrabold text-success mt-1" id="histVolumeVal">-</div>
-                        </div>
-                    </div>
-                </div>
 
-                <div class="d-flex justify-content-center align-items-center gap-4 mt-3 font-mono small" style="font-size: 0.78rem;">
-                    <span class="d-flex align-items-center gap-1.5 text-cyan">
-                        <span style="display:inline-block; width: 12px; height: 12px; background: #06b6d4; border-radius: 3px;"></span> Download (Rx)
-                    </span>
-                    <span class="d-flex align-items-center gap-1.5" style="color: #c084fc;">
-                        <span style="display:inline-block; width: 12px; height: 12px; background: #a855f7; border-radius: 3px;"></span> Upload (Tx)
-                    </span>
+                    <!-- Scrollable Leaderboard Container -->
+                    <div class="d-flex flex-column gap-2.5 flex-grow-1 overflow-auto pe-1" id="topNonBgpList" style="max-height: 480px;">
+                        {% for d in top_non_bgp_devices %}
+                            {% set rank = loop.index %}
+                            <div class="p-2.5 rounded-3 border position-relative overflow-hidden" 
+                                 id="topDevCard_{{ d.id }}"
+                                 style="background: rgba(15, 23, 42, 0.6); border-color: rgba(255, 255, 255, 0.08) !important;">
+                                
+                                <!-- Top Row: Rank, Name, Site, Total Speed -->
+                                <div class="d-flex justify-content-between align-items-center mb-1.5">
+                                    <div class="d-flex align-items-center gap-2 overflow-hidden me-2">
+                                        {% if rank == 1 %}
+                                            <span class="badge rounded-pill fw-extrabold font-mono px-2 py-1" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #1e1b4b; font-size: 0.72rem; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);">
+                                                #1
+                                            </span>
+                                        {% elif rank == 2 %}
+                                            <span class="badge rounded-pill fw-extrabold font-mono px-2 py-1" style="background: linear-gradient(135deg, #94a3b8, #64748b); color: #0f172a; font-size: 0.72rem;">
+                                                #2
+                                            </span>
+                                        {% elif rank == 3 %}
+                                            <span class="badge rounded-pill fw-extrabold font-mono px-2 py-1" style="background: linear-gradient(135deg, #b45309, #78350f); color: #fed7aa; font-size: 0.72rem;">
+                                                #3
+                                            </span>
+                                        {% else %}
+                                            <span class="badge rounded-pill fw-bold font-mono px-2 py-1" style="background: rgba(255, 255, 255, 0.08); color: #94a3b8; font-size: 0.72rem;">
+                                                #{{ rank }}
+                                            </span>
+                                        {% endif %}
+
+                                        <div class="text-truncate">
+                                            <span class="fw-bold text-light text-truncate font-mono d-block" style="font-size: 0.88rem;" title="{{ d.name }}">
+                                                {{ d.name }}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="text-end font-mono flex-shrink-0">
+                                        <div class="fs-5 fw-extrabold text-light lh-1" id="topDevTot_{{ d.id }}">
+                                            {{ d.total_display }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Sub Row: Site Badge, IP, DL & UL Speeds -->
+                                <div class="d-flex justify-content-between align-items-center font-mono small mb-2" style="font-size: 0.7rem;">
+                                    <div class="d-flex align-items-center gap-1.5 text-secondary">
+                                        <span class="badge px-1.5 py-0.5 rounded-1 font-mono text-uppercase" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); font-size: 0.65rem;">
+                                            {{ d.site }}
+                                        </span>
+                                        <span>{{ d.ip }}</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1.5">
+                                        <span class="text-cyan fw-medium" id="topDevRx_{{ d.id }}">↓ {{ d.rx_display }}</span>
+                                        <span class="text-secondary">|</span>
+                                        <span class="fw-medium" style="color: #c084fc;" id="topDevTx_{{ d.id }}">↑ {{ d.tx_display }}</span>
+                                    </div>
+                                </div>
+
+                                <!-- Split Ratio Bar -->
+                                <div class="split-bar" style="height: 5px;">
+                                    <div class="split-dl" id="topDevBarDl_{{ d.id }}" style="width: {{ d.rx_percent }}%;"></div>
+                                    <div class="split-ul" id="topDevBarUl_{{ d.id }}" style="width: {{ d.tx_percent }}%;"></div>
+                                </div>
+
+                                <!-- Bottom Telemetry: Top Interface & Hardware Health -->
+                                <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-light border-opacity-10 text-secondary font-mono" style="font-size: 0.68rem;">
+                                    <div class="text-truncate me-2" title="{{ d.top_interface or '-' }}">
+                                        {% if d.top_interface %}
+                                            <i class="bi bi-activity text-info me-1"></i><span class="text-light">{{ d.top_interface }}</span>
+                                        {% else %}
+                                            <i class="bi bi-hdd-network me-1"></i>{{ d.model_info }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                        <span id="topDevCpu_{{ d.id }}">CPU: <b class="{% if d.cpu_usage and d.cpu_usage > 70 %}text-danger{% else %}text-light{% endif %}">{% if d.cpu_usage is not none %}{{ d.cpu_usage }}%{% else %}-{% endif %}</b></span>
+                                        <span id="topDevTemp_{{ d.id }}">Suhu: <b class="text-light">{% if d.temperature is not none %}{{ d.temperature }}°C{% else %}-{% endif %}</b></span>
+                                        {% if d.is_online %}
+                                            <span class="badge rounded-circle p-1 bg-success" title="Online"></span>
+                                        {% else %}
+                                            <span class="badge rounded-circle p-1 bg-danger" title="Offline"></span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                            </div>
+                        {% else %}
+                            <div class="p-4 text-center text-secondary font-mono small d-flex flex-column align-items-center justify-content-center h-100">
+                                <i class="bi bi-inbox fs-2 text-secondary mb-2"></i>
+                                <div>Belum ada perangkat Core / Distribusi non-BGP</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Leaderboard Footer Summary -->
+                    <div class="mt-2 pt-2 border-top border-light border-opacity-10 d-flex justify-content-between align-items-center text-secondary font-mono small" style="font-size: 0.7rem;">
+                        <span>Urutan bandwidth tertinggi</span>
+                        <span class="badge font-mono" style="background: rgba(255, 255, 255, 0.06); color: #cbd5e1;" id="topDevCountBadge">
+                            {{ top_non_bgp_devices|length }} Perangkat
+                        </span>
+                    </div>
+
                 </div>
             </div>
+
         </div>
 
         <!-- MONITORING TRAFFIC & STATUS PERANGKAT NON-BGP (CENTERED BILLBOARD) -->
@@ -624,7 +757,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-3">
                     {% set non_bgp_list = [] %}
-                    {% for d in devices if not d.is_bgp %}
+                    {% for d in top_non_bgp_devices %}
                         {% set _ = non_bgp_list.append(d) %}
                     {% endfor %}
                     <span class="badge font-mono" style="background: rgba(255, 255, 255, 0.08); color: #94a3b8;" id="activeDeviceFilterCount">
@@ -638,7 +771,7 @@
 
             <!-- CENTERED DEVICE GRID -->
             <div class="row g-3 justify-content-center" id="devicesCardGrid">
-                {% for d in devices if not d.is_bgp %}
+                {% for d in top_non_bgp_devices %}
                 <div class="col-12 col-md-6 col-xl-6 device-card-col" data-site="{{ d.site }}">
                     <div class="glass-panel p-3.5 h-100 border-start border-3 {% if d.is_online %}border-success{% else %}border-danger{% endif %} shadow-sm">
                         
@@ -1221,6 +1354,92 @@
                         const sumEl = document.getElementById('uplinkTotalSumDisplay');
                         if (sumEl) sumEl.innerText = data.uplink_summary.total_traffic_display;
                     }
+                }
+
+                // 5b. Update Top Non-BGP Devices Leaderboard (Right of chart)
+                const topNonBgpContainer = document.getElementById('topNonBgpList');
+                if (topNonBgpContainer && data.top_non_bgp_devices) {
+                    if (data.top_non_bgp_devices.length === 0) {
+                        topNonBgpContainer.innerHTML = `
+                            <div class="p-4 text-center text-secondary font-mono small d-flex flex-column align-items-center justify-content-center h-100">
+                                <i class="bi bi-inbox fs-2 text-secondary mb-2"></i>
+                                <div>Belum ada perangkat Core / Distribusi non-BGP</div>
+                            </div>
+                        `;
+                    } else {
+                        let htmlStr = '';
+                        data.top_non_bgp_devices.forEach((d, idx) => {
+                            const rank = idx + 1;
+                            let badgeStyle = 'background: rgba(255, 255, 255, 0.08); color: #94a3b8;';
+                            if (rank === 1) badgeStyle = 'background: linear-gradient(135deg, #f59e0b, #d97706); color: #1e1b4b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);';
+                            else if (rank === 2) badgeStyle = 'background: linear-gradient(135deg, #94a3b8, #64748b); color: #0f172a;';
+                            else if (rank === 3) badgeStyle = 'background: linear-gradient(135deg, #b45309, #78350f); color: #fed7aa;';
+
+                            const statusDot = d.is_online ? '<span class="badge rounded-circle p-1 bg-success" title="Online"></span>' : '<span class="badge rounded-circle p-1 bg-danger" title="Offline"></span>';
+                            const topPortHtml = d.top_interface ? `<i class="bi bi-activity text-info me-1"></i><span class="text-light">${d.top_interface}</span>` : `<i class="bi bi-hdd-network me-1"></i>${d.model_info || '-'}`;
+                            const cpuClass = d.cpu_usage && d.cpu_usage > 70 ? 'text-danger' : 'text-light';
+
+                            htmlStr += `
+                                <div class="p-2.5 rounded-3 border position-relative overflow-hidden" 
+                                     id="topDevCard_${d.id}"
+                                     style="background: rgba(15, 23, 42, 0.6); border-color: rgba(255, 255, 255, 0.08) !important;">
+                                    
+                                    <div class="d-flex justify-content-between align-items-center mb-1.5">
+                                        <div class="d-flex align-items-center gap-2 overflow-hidden me-2">
+                                            <span class="badge rounded-pill fw-extrabold font-mono px-2 py-1" style="${badgeStyle}; font-size: 0.72rem;">
+                                                #${rank}
+                                            </span>
+                                            <div class="text-truncate">
+                                                <span class="fw-bold text-light text-truncate font-mono d-block" style="font-size: 0.88rem;" title="${d.name}">
+                                                    ${d.name}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="text-end font-mono flex-shrink-0">
+                                            <div class="fs-5 fw-extrabold text-light lh-1" id="topDevTot_${d.id}">
+                                                ${d.total_display}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex justify-content-between align-items-center font-mono small mb-2" style="font-size: 0.7rem;">
+                                        <div class="d-flex align-items-center gap-1.5 text-secondary">
+                                            <span class="badge px-1.5 py-0.5 rounded-1 font-mono text-uppercase" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); font-size: 0.65rem;">
+                                                ${d.site}
+                                            </span>
+                                            <span>${d.ip}</span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-1.5">
+                                            <span class="text-cyan fw-medium" id="topDevRx_${d.id}">↓ ${d.rx_display}</span>
+                                            <span class="text-secondary">|</span>
+                                            <span class="fw-medium" style="color: #c084fc;" id="topDevTx_${d.id}">↑ ${d.tx_display}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="split-bar" style="height: 5px;">
+                                        <div class="split-dl" id="topDevBarDl_${d.id}" style="width: ${d.rx_percent}%;"></div>
+                                        <div class="split-ul" id="topDevBarUl_${d.id}" style="width: ${d.tx_percent}%;"></div>
+                                    </div>
+
+                                    <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-light border-opacity-10 text-secondary font-mono" style="font-size: 0.68rem;">
+                                        <div class="text-truncate me-2" title="${d.top_interface || '-'}">
+                                            ${topPortHtml}
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                            <span id="topDevCpu_${d.id}">CPU: <b class="${cpuClass}">${d.cpu_usage !== null ? d.cpu_usage + '%' : '-'}</b></span>
+                                            <span id="topDevTemp_${d.id}">Suhu: <b class="text-light">${d.temperature !== null ? d.temperature + '°C' : '-'}</b></span>
+                                            ${statusDot}
+                                        </div>
+                                    </div>
+
+                                </div>
+                            `;
+                        });
+                        topNonBgpContainer.innerHTML = htmlStr;
+                    }
+                    const countBadge = document.getElementById('topDevCountBadge');
+                    if (countBadge) countBadge.innerText = `${data.top_non_bgp_devices.length} Perangkat`;
                 }
 
                 // 5. Update Device Cards Data

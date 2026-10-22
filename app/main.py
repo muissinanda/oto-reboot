@@ -927,6 +927,8 @@ def get_nms_telemetry_payload(db: Session):
     max_temp = round(max(valid_temps), 1) if valid_temps else None
 
     sites = sorted(list(set(d["site"] for d in devices_data if d["site"])))
+    non_bgp_devices = [d for d in devices_data if not d.get("is_bgp")]
+    top_non_bgp_devices = sorted(non_bgp_devices, key=lambda x: x.get("total_bw_mbps", 0.0), reverse=True)
 
     return {
         "stats": {
@@ -969,6 +971,7 @@ def get_nms_telemetry_payload(db: Session):
             "critical_count": sfp_critical_count
         },
         "devices": devices_data,
+        "top_non_bgp_devices": top_non_bgp_devices,
         "top_interfaces": top_interfaces,
         "sites": sites
     }
@@ -987,6 +990,7 @@ async def page_noc_wallboard(request: Request, db: Session = Depends(get_db)):
             "uplink_summary": telemetry.get("uplink_summary", {}),
             "sfp_summary": telemetry["sfp_summary"],
             "devices": telemetry["devices"],
+            "top_non_bgp_devices": telemetry.get("top_non_bgp_devices", []),
             "top_interfaces": telemetry["top_interfaces"],
             "sites": telemetry["sites"]
         }
