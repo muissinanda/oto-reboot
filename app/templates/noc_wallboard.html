@@ -150,18 +150,46 @@
             font-weight: 600;
         }
 
-        /* Site Filter Tabs on Header */
+        /* Horizontal Smooth Scroll Container for Sites */
+        .site-scroll-container {
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(99, 102, 241, 0.4) transparent;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 2px;
+        }
+        .site-scroll-container::-webkit-scrollbar {
+            height: 4px;
+        }
+        .site-scroll-container::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 4px;
+        }
+        .site-scroll-container::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.4);
+            border-radius: 4px;
+        }
+        .site-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.7);
+        }
+
+        /* Site Filter Tabs on Dedicated Sub-bar */
         .site-tab-btn {
-            font-size: 0.82rem !important;
-            font-weight: 700 !important;
-            padding: 5px 12px !important;
+            font-size: 0.76rem !important;
+            font-weight: 600 !important;
+            padding: 4px 10px !important;
             letter-spacing: 0.02em;
+            white-space: nowrap !important;
+            flex-shrink: 0;
+            border-radius: 6px !important;
         }
         .site-tab-btn.active {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(79, 70, 229, 0.35)) !important;
-            border-color: rgba(165, 180, 252, 0.6) !important;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(79, 70, 229, 0.45)) !important;
+            border-color: rgba(165, 180, 252, 0.7) !important;
             color: #ffffff !important;
-            box-shadow: 0 0 12px rgba(99, 102, 241, 0.4) !important;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.4) !important;
         }
 
         /* History Time Range Pills */
@@ -247,7 +275,7 @@
 <body class="noc-grid-overlay">
 
     <!-- TOP HEADER BAR (Hardware Accelerated & Ultra Light) -->
-    <header class="py-2.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex justify-content-between align-items-center flex-wrap gap-2 sticky-top" style="background: #080d1a; z-index: 1020;">
+    <header class="py-2 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex justify-content-between align-items-center gap-3 sticky-top" style="background: #080d1a; z-index: 1020;">
         <!-- Left: Brand & Radar Status -->
         <div class="d-flex align-items-center gap-3">
             <div class="d-flex align-items-center gap-2">
@@ -266,13 +294,13 @@
                     <span>NETWORK OPERATIONS CENTER</span>
                 </h1>
                 <div class="text-secondary small font-mono d-none d-md-block" style="font-size: 0.68rem;">
-                    Fleet Real-Time Telemetry & Optical Backbone Monitor • Semua Site
+                    Fleet Real-Time Telemetry &amp; Optical Backbone Monitor • Semua Site
                 </div>
             </div>
         </div>
 
         <!-- Center: Big Live Digital Clock -->
-        <div class="text-center order-3 order-lg-2 my-1 my-lg-0 mx-auto">
+        <div class="text-center mx-auto d-none d-md-block">
             <div class="font-mono fw-extrabold text-light fs-4 lh-1" id="nocClock" style="letter-spacing: 0.05em;">
                 --:--:-- WIB
             </div>
@@ -281,18 +309,8 @@
             </div>
         </div>
 
-        <!-- Right: Controls (Site Filter, Auto-Cycle, Sound Alert, Sync Countdown, Fullscreen) -->
-        <div class="d-flex align-items-center gap-2 order-2 order-lg-3 flex-wrap">
-            <!-- Site Tabs (Shows all sites from NMS) -->
-            <div class="btn-group btn-group-sm d-none d-xl-flex" id="siteFilterGroup">
-                <button class="btn btn-noc active site-tab-btn" onclick="setSiteFilter('', this)" id="btnSiteAll">
-                    Semua Site (<span id="countAllSites">{{ devices|length }}</span>)
-                </button>
-                {% for s in sites %}
-                    <button class="btn btn-noc site-tab-btn" onclick="setSiteFilter('{{ s }}', this)">{{ s }}</button>
-                {% endfor %}
-            </div>
-
+        <!-- Right: Controls (Auto-Cycle, Alert Toggle, Sound Alert, Sync Countdown, Fullscreen) -->
+        <div class="d-flex align-items-center gap-2 flex-shrink-0">
             <!-- Auto-Cycle Toggle for TV Screens -->
             <button class="btn btn-noc" id="btnAutoCycle" onclick="toggleAutoCycle()" title="Ganti tampilan site otomatis setiap 15 detik untuk TV">
                 <i class="bi bi-arrow-repeat" id="cycleIcon"></i>
@@ -330,6 +348,22 @@
             </button>
         </div>
     </header>
+
+    <!-- DEDICATED SITE SUB-NAVBAR (Smooth Horizontal Scroll for 29+ Sites) -->
+    <nav class="site-subnav py-1.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex align-items-center gap-2.5" style="background: #0b132b; z-index: 1010; position: sticky; top: 57px;">
+        <div class="d-flex align-items-center gap-1.5 text-secondary small font-mono flex-shrink-0 pe-2 border-end border-light border-opacity-10">
+            <i class="bi bi-geo-alt-fill text-info"></i>
+            <span class="fw-bold text-light text-opacity-80" style="font-size: 0.72rem; letter-spacing: 0.05em;">FILTER SITE:</span>
+        </div>
+        <div class="site-scroll-container d-flex align-items-center gap-1.5 flex-grow-1" id="siteFilterGroup">
+            <button class="btn btn-noc site-tab-btn active" onclick="setSiteFilter('', this)" id="btnSiteAll">
+                Semua Site (<span id="countAllSites">{{ devices|length }}</span>)
+            </button>
+            {% for s in sites %}
+                <button class="btn btn-noc site-tab-btn" onclick="setSiteFilter('{{ s }}', this)">{{ s }}</button>
+            {% endfor %}
+        </div>
+    </nav>
 
     <!-- CRITICAL ALERTS BANNER -->
     <div class="container-fluid px-3 px-md-4 mt-3">
@@ -1138,10 +1172,19 @@
 
             // Active button state
             document.querySelectorAll('#siteFilterGroup button').forEach(b => b.classList.remove('active'));
+            let activeBtn = null;
             if (btnEl) {
                 btnEl.classList.add('active');
+                activeBtn = btnEl;
             } else if (!site) {
-                document.getElementById('btnSiteAll').classList.add('active');
+                const btnAll = document.getElementById('btnSiteAll');
+                if (btnAll) {
+                    btnAll.classList.add('active');
+                    activeBtn = btnAll;
+                }
+            }
+            if (activeBtn && activeBtn.scrollIntoView) {
+                activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
             }
 
             // Reload history when site filter changes
@@ -1152,16 +1195,16 @@
         function toggleAutoCycle() {
             const btn = document.getElementById('btnAutoCycle');
             const icon = document.getElementById('cycleIcon');
-            const txt = document.getElementById('autoCycleState');
+            const txt = document.getElementById('cycleText');
 
             if (autoCycleTimer) {
                 clearInterval(autoCycleTimer);
                 autoCycleTimer = null;
                 btn.classList.remove('active');
-                txt.innerText = 'Off';
+                if (txt) txt.innerText = 'Cycle: Off';
             } else {
                 btn.classList.add('active');
-                txt.innerText = 'On (15s)';
+                if (txt) txt.innerText = 'Cycle: On (15s)';
                 autoCycleTimer = setInterval(() => {
                     autoCycleIndex = (autoCycleIndex + 1) % availableSites.length;
                     const nextSite = availableSites[autoCycleIndex];
