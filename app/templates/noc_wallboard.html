@@ -1139,18 +1139,18 @@
         }
         unlockAudioOnInteraction();
 
-        // Single Tone Pulse Generator
-        function playBeep(ctx, freq, startTime, duration, vol = 0.5) {
+        // Futuristic Cyber Sound Synthesizer (Frequency Sweep)
+        function playCyberSweep(ctx, startFreq, endFreq, startTime, duration, vol = 0.5, waveType = 'sine') {
             try {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
 
-                // 'triangle' waveform produces richer acoustic harmonics for TV speakers
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(freq, startTime);
+                osc.type = waveType;
+                osc.frequency.setValueAtTime(startFreq, startTime);
+                osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), startTime + duration);
 
                 gain.gain.setValueAtTime(vol, startTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
                 osc.connect(gain);
                 gain.connect(ctx.destination);
@@ -1158,11 +1158,36 @@
                 osc.start(startTime);
                 osc.stop(startTime + duration);
             } catch (err) {
-                console.warn("Beep audio error:", err);
+                console.warn("CyberSweep audio error:", err);
             }
         }
 
-        // Professional NOC Emergency Warning Alarm Synthesizer
+        // Voice Alert (Text to Speech - Bahasa Indonesia)
+        function speakAlertVoice(text) {
+            if (!('speechSynthesis' in window) || !window.speechSynthesis) return;
+            try {
+                window.speechSynthesis.cancel(); // clear previous stuck speech
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = "id-ID";
+                utterance.rate = 1.08;
+                utterance.pitch = 1.05;
+                utterance.volume = 1.0;
+
+                const voices = window.speechSynthesis.getVoices();
+                if (voices && voices.length > 0) {
+                    const idVoice = voices.find(v => (v.lang === 'id-ID' || v.lang.startsWith('id')) && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online')))
+                                 || voices.find(v => v.lang === 'id-ID' || v.lang.startsWith('id'));
+                    if (idVoice) utterance.voice = idVoice;
+                }
+
+                window.speechSynthesis.speak(utterance);
+            } catch (e) {
+                console.warn("TTS speak error:", e);
+            }
+        }
+
+        // High-Tech Futuristic NOC Tactical Warning Alarm Synthesizer
         function playNocAlertTone(toneType = 'alarm', incidentSummary = null) {
             if (!audioAlertEnabled) return;
             const ctx = getAudioContext();
@@ -1171,18 +1196,25 @@
             const now = ctx.currentTime;
 
             if (toneType === 'test') {
-                // Double chime for testing sound confirmation
-                playBeep(ctx, 880, now, 0.12, 0.35);
-                playBeep(ctx, 1174, now + 0.15, 0.20, 0.40);
+                // Futuristic activation sci-fi chime
+                playCyberSweep(ctx, 523, 784, now + 0.00, 0.12, 0.35, 'triangle');
+                playCyberSweep(ctx, 784, 1174, now + 0.12, 0.20, 0.40, 'sine');
+                setTimeout(() => {
+                    speakAlertVoice("Suara monitor aktif bro!");
+                }, 350);
                 return;
             }
 
-            // Real NOC Warning Siren (3-stage alternating emergency alarm)
-            playBeep(ctx, 920, now + 0.00, 0.14, 0.6);
-            playBeep(ctx, 680, now + 0.16, 0.14, 0.5);
-            playBeep(ctx, 920, now + 0.34, 0.14, 0.6);
-            playBeep(ctx, 680, now + 0.50, 0.14, 0.5);
-            playBeep(ctx, 1040, now + 0.68, 0.25, 0.7);
+            // High-Tech Cyber Sonar Alarm (Tactical Drop & Pulse)
+            // 1. Sub-bass tactical punch
+            playCyberSweep(ctx, 160, 45, now + 0.00, 0.22, 0.75, 'sine');
+            // 2. High-tech laser sonar chirp 1 (descending sweep)
+            playCyberSweep(ctx, 1500, 750, now + 0.04, 0.14, 0.65, 'triangle');
+            // 3. Urgent sonar chirp 2 (higher, cutting through)
+            playCyberSweep(ctx, 1800, 900, now + 0.22, 0.14, 0.70, 'triangle');
+            // 4. Resonant futuristic warning chord
+            playCyberSweep(ctx, 1200, 1050, now + 0.40, 0.35, 0.55, 'sine');
+            playCyberSweep(ctx, 1600, 1400, now + 0.40, 0.35, 0.50, 'sine');
 
             // Flash audio button visually to indicate alarm is sounding
             const audioBtn = document.getElementById('btnAudioToggle');
@@ -1191,23 +1223,15 @@
                 setTimeout(() => audioBtn.classList.remove('btn-alarm-flash'), 1200);
             }
 
-            // Voice announcement (SpeechSynthesis)
-            if ('speechSynthesis' in window && window.speechSynthesis) {
-                setTimeout(() => {
-                    if (!audioAlertEnabled) return;
-                    try {
-                        let text = "Peringatan! Koneksi jaringan terputus!";
-                        if (incidentSummary && incidentSummary.site) {
-                            text = `Peringatan! Insiden putus di Site ${incidentSummary.site}!`;
-                        }
-                        const utterance = new SpeechSynthesisUtterance(text);
-                        utterance.lang = "id-ID";
-                        utterance.rate = 1.05;
-                        utterance.volume = 0.95;
-                        window.speechSynthesis.speak(utterance);
-                    } catch (e) {}
-                }, 950);
-            }
+            // Cool Voice Alert: "Bro, ada putus bro di site [nama site]!"
+            setTimeout(() => {
+                if (!audioAlertEnabled) return;
+                let siteName = (incidentSummary && incidentSummary.site) ? incidentSummary.site : "";
+                let alertSentence = siteName 
+                    ? `Bro, ada putus bro di site ${siteName}!` 
+                    : `Bro, ada putus bro!`;
+                speakAlertVoice(alertSentence);
+            }, 750);
         }
 
         function updateAudioToggleUI() {
