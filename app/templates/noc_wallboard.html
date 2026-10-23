@@ -177,19 +177,19 @@
 
         /* Site Filter Tabs on Dedicated Sub-bar */
         .site-tab-btn {
-            font-size: 0.76rem !important;
-            font-weight: 600 !important;
-            padding: 4px 10px !important;
+            font-size: 0.84rem !important;
+            font-weight: 700 !important;
+            padding: 5px 12px !important;
             letter-spacing: 0.02em;
             white-space: nowrap !important;
             flex-shrink: 0;
             border-radius: 6px !important;
         }
         .site-tab-btn.active {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(79, 70, 229, 0.45)) !important;
-            border-color: rgba(165, 180, 252, 0.7) !important;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.45), rgba(79, 70, 229, 0.55)) !important;
+            border-color: rgba(165, 180, 252, 0.8) !important;
             color: #ffffff !important;
-            box-shadow: 0 0 10px rgba(99, 102, 241, 0.4) !important;
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.5) !important;
         }
 
         /* History Time Range Pills */
@@ -359,8 +359,8 @@
     <!-- DEDICATED SITE SUB-NAVBAR (Smooth Horizontal Scroll for 29+ Sites) -->
     <nav class="site-subnav py-1.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex align-items-center gap-2.5" style="background: #0b132b; z-index: 1010; position: sticky; top: 57px;">
         <div class="d-flex align-items-center gap-1.5 text-secondary small font-mono flex-shrink-0 pe-2 border-end border-light border-opacity-10">
-            <i class="bi bi-geo-alt-fill text-info"></i>
-            <span class="fw-bold text-light text-opacity-80" style="font-size: 0.72rem; letter-spacing: 0.05em;">FILTER SITE:</span>
+            <i class="bi bi-geo-alt-fill text-warning"></i>
+            <span class="fw-extrabold text-light" style="font-size: 0.78rem; letter-spacing: 0.05em;">FILTER SITE:</span>
         </div>
         <div class="site-scroll-container d-flex align-items-center gap-1.5 flex-grow-1" id="siteFilterGroup">
             <button class="btn btn-noc site-tab-btn active" onclick="setSiteFilter('', this)" id="btnSiteAll">
@@ -777,17 +777,17 @@
                                 </div>
 
                                 <!-- Sub Row: Site Badge, IP, DL & UL Speeds -->
-                                <div class="d-flex justify-content-between align-items-center font-mono small mb-2" style="font-size: 0.7rem;">
-                                    <div class="d-flex align-items-center gap-1.5 text-secondary">
-                                        <span class="badge px-1.5 py-0.5 rounded-1 font-mono text-uppercase" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); font-size: 0.65rem;">
-                                            {{ d.site }}
+                                <div class="d-flex justify-content-between align-items-center font-mono small mb-2" style="font-size: 0.72rem;">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge px-2 py-1 rounded-1 font-mono text-uppercase fw-extrabold d-inline-flex align-items-center" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(79, 70, 229, 0.5)); color: #ffffff; border: 1px solid rgba(165, 180, 252, 0.75); font-size: 0.84rem; letter-spacing: 0.03em; box-shadow: 0 0 10px rgba(99, 102, 241, 0.35);">
+                                            <i class="bi bi-geo-alt-fill text-warning me-1"></i>{{ d.site }}
                                         </span>
-                                        <span>{{ d.ip }}</span>
+                                        <span class="text-secondary" style="font-size: 0.75rem;">{{ d.ip }}</span>
                                     </div>
                                     <div class="d-flex align-items-center gap-1.5">
-                                        <span class="text-cyan fw-medium" id="topDevRx_{{ d.id }}">↓ {{ d.rx_display }}</span>
+                                        <span class="text-cyan fw-bold" id="topDevRx_{{ d.id }}">↓ {{ d.rx_display }}</span>
                                         <span class="text-secondary">|</span>
-                                        <span class="fw-medium" style="color: #c084fc;" id="topDevTx_{{ d.id }}">↑ {{ d.tx_display }}</span>
+                                        <span class="fw-bold" style="color: #c084fc;" id="topDevTx_{{ d.id }}">↑ {{ d.tx_display }}</span>
                                     </div>
                                 </div>
 
@@ -1815,17 +1815,17 @@
                                         </div>
                                     </div>
 
-                                    <div class="d-flex justify-content-between align-items-center font-mono small mb-2" style="font-size: 0.7rem;">
-                                        <div class="d-flex align-items-center gap-1.5 text-secondary">
-                                            <span class="badge px-1.5 py-0.5 rounded-1 font-mono text-uppercase" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); font-size: 0.65rem;">
-                                                ${d.site}
+                                    <div class="d-flex justify-content-between align-items-center font-mono small mb-2" style="font-size: 0.72rem;">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge px-2 py-1 rounded-1 font-mono text-uppercase fw-extrabold d-inline-flex align-items-center" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(79, 70, 229, 0.5)); color: #ffffff; border: 1px solid rgba(165, 180, 252, 0.75); font-size: 0.84rem; letter-spacing: 0.03em; box-shadow: 0 0 10px rgba(99, 102, 241, 0.35);">
+                                                <i class="bi bi-geo-alt-fill text-warning me-1"></i>${d.site}
                                             </span>
-                                            <span>${d.ip}</span>
+                                            <span class="text-secondary" style="font-size: 0.75rem;">${d.ip}</span>
                                         </div>
                                         <div class="d-flex align-items-center gap-1.5">
-                                            <span class="text-cyan fw-medium" id="topDevRx_${d.id}">↓ ${d.rx_display}</span>
+                                            <span class="text-cyan fw-bold" id="topDevRx_${d.id}">↓ ${d.rx_display}</span>
                                             <span class="text-secondary">|</span>
-                                            <span class="fw-medium" style="color: #c084fc;" id="topDevTx_${d.id}">↑ ${d.tx_display}</span>
+                                            <span class="fw-bold" style="color: #c084fc;" id="topDevTx_${d.id}">↑ ${d.tx_display}</span>
                                         </div>
                                     </div>
 
