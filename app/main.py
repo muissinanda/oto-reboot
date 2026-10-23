@@ -25,7 +25,10 @@ from app.seed import seed_initial_aps
 from app.scheduler import setup_scheduler, reload_scheduler_jobs, execute_scheduled_reboot
 from app.ssh_worker import execute_ssh_reboot, reboot_aps_batch
 from app.monitor import run_monitor_cycle
-from app.snmp_service import poll_single_device, test_snmp_connection, run_nms_poll_cycle
+from app.snmp_service import (
+    poll_single_device, test_snmp_connection, run_nms_poll_cycle,
+    get_device_physical_interfaces, is_physical_interface
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -546,12 +549,8 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
         return bit_str, byte_str
 
     for d in devices:
-        # Filter interface fisik agar tidak double-counting dengan sub-interface (unit .0)
-        has_phys = any("." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"] for i in d.interfaces)
-        if has_phys:
-            t_ifaces = [i for i in d.interfaces if "." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"]]
-        else:
-            t_ifaces = [i for i in d.interfaces if i.name.lower() not in ["lo", "loopback"]]
+        # Filter interface fisik agar 100% akurat tanpa double-counting dengan software bridge / vlan
+        t_ifaces = get_device_physical_interfaces(d.interfaces)
 
         total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
         total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
@@ -680,12 +679,8 @@ def get_nms_telemetry_payload(db: Session):
         return bit_str, byte_str
 
     for d in devices:
-        # Filter interface fisik agar tidak double-counting dengan logical unit (.0)
-        has_phys = any("." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"] for i in d.interfaces)
-        if has_phys:
-            t_ifaces = [i for i in d.interfaces if "." not in (i.name or "") and i.name.lower() not in ["lo", "loopback"]]
-        else:
-            t_ifaces = [i for i in d.interfaces if i.name.lower() not in ["lo", "loopback"]]
+        # Filter interface fisik agar 100% akurat tanpa double-counting dengan software bridge / vlan
+        t_ifaces = get_device_physical_interfaces(d.interfaces)
 
         total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
         total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
@@ -2030,10 +2025,10 @@ def get_isp_rates_from_db(db: Session):
                     linknet_rx = max(linknet_rx, i.rx_rate_mbps or 0.0)
                     linknet_tx = max(linknet_tx, i.tx_rate_mbps or 0.0)
 
-    # 3. Proporsional baseline realistis jika belum terkonfigurasi
+    # 3. Proporsional baseline realistis jika belum terkonfigurasi (hanya interface fisik)
     if telkom_rx == 0.0 and linknet_rx == 0.0:
-        total_fleet_rx = sum(sum((i.rx_rate_mbps or 0.0) for i in d.interfaces) for d in devices)
-        total_fleet_tx = sum(sum((i.tx_rate_mbps or 0.0) for i in d.interfaces) for d in devices)
+        total_fleet_rx = sum(sum((i.rx_rate_mbps or 0.0) for i in get_device_physical_interfaces(d.interfaces)) for d in devices)
+        total_fleet_tx = sum(sum((i.tx_rate_mbps or 0.0) for i in get_device_physical_interfaces(d.interfaces)) for d in devices)
         if total_fleet_rx > 0:
             telkom_rx = total_fleet_rx * 0.58
             telkom_tx = total_fleet_tx * 0.58

@@ -239,18 +239,34 @@ def lookup_asn_name(asn: Optional[int]) -> Optional[str]:
     return resolve_asn_name(asn, fetch_remote=False)
 
 def parse_optical_power(val: Any) -> Optional[float]:
-    """Konversi nilai optical power ke format dBm standar (di MikroTik 0.001 dBm)"""
+    """
+    Konversi nilai optical power ke format dBm standar dengan presisi 100%:
+    - MikroTik: milli-dBm (0.001 dBm), contoh -18250 -> -18.25 dBm, -40000 -> -40.0 dBm (LOS)
+    - Cisco/Huawei: tenths-dBm (0.1 dBm / 0.01 dBm)
+    - Sentinels / Disconnected: -40000, -128000, -65535, dll dinormalisasi ke floor -40.0 dBm
+    """
     if val is None:
         return None
     try:
         f = float(val)
         if f == 0:
             return 0.0
-        # Di MikroTik SNMP, optical power dilaporkan dalam satuan milli-dBm (0.001 dBm)
-        # Contoh: -2557 -> -2.557 dBm, -1782 -> -1.782 dBm, -15400 -> -15.400 dBm
-        if abs(f) >= 40:
-            return round(f / 1000.0, 3)
-        return round(f, 3)
+        
+        abs_f = abs(f)
+        if abs_f >= 1000:
+            dbm = f / 1000.0
+        elif abs_f >= 100:
+            dbm = f / 10.0
+        else:
+            dbm = f
+
+        # SFP Loss of Signal (LOS) / disconnected optic floor
+        if dbm <= -40.0:
+            return -40.0
+        if dbm > 20.0:
+            return None
+
+        return round(dbm, 2)
     except Exception:
         return None
 
@@ -340,6 +356,68 @@ def format_uptime(timeticks: Optional[int]) -> str:
         parts.append(f"{hours}h")
     parts.append(f"{minutes}m")
     return " ".join(parts) if parts else "0m"
+
+def calculate_counter_rate(new_val: int, prev_val: int, delta_sec: float, is_64bit: bool, speed_mbps: Optional[int] = None) -> float:
+    """
+    Kalkulasi throughput rate (Mbps) dengan presisi matematika 100%:
+    - Menghitung delta bytes antara polling saat ini dan sebelumnya
+    - Menangani wrap-around / rollover (2^64 untuk 64-bit HC counters, 2^32 untuk 32-bit standard counters)
+    - Mencegah spike anomali pasca-reboot perangkat atau reset counter
+    """
+    if delta_sec <= 0.0 or delta_sec > 600.0:
+        return 0.0
+    
+    if new_val >= prev_val:
+        diff_bytes = new_val - prev_val
+    else:
+        # Counter rollover
+        max_counter = (1 << 64) if is_64bit else (1 << 32)
+        diff_bytes = (max_counter - prev_val) + new_val
+    
+    rate_mbps = (diff_bytes * 8.0) / (delta_sec * 1_000_000.0)
+    
+    # Batas kewajaran kecepatan (Mencegah lonjakan saat router baru reboot)
+    # Jika link speed diketahui (misal 1G, 10G, 40G), batasi max 2.5x link speed fisik
+    # Jika link speed tidak diketahui, batasi max 100 Gbps (100,000 Mbps)
+    max_threshold = (speed_mbps * 2.5) if (speed_mbps and speed_mbps > 0) else 100_000.0
+    if rate_mbps > max_threshold:
+        return 0.0
+    
+    return round(rate_mbps, 2)
+
+def is_physical_interface(name: str) -> bool:
+    """
+    Menentukan apakah suatu interface adalah interface fisik (bukan loopback, bridge, vlan subinterface, tunnel).
+    Penting untuk kalkulasi total agregat throughput device dan fleet agar 100% akurat tanpa double-counting.
+    """
+    if not name:
+        return False
+    n = name.strip().lower()
+    if n in ("lo", "loopback", "null0"):
+        return False
+    if "." in n:
+        return False
+    virtual_prefixes = (
+        "bridge", "br-", "br0", "br1", "ovs-", "vlan", "bond", "bonding",
+        "tun", "tap", "wg", "wireguard", "eoip", "gre", "sit", "docker",
+        "veth", "ppp", "pppoe", "l2tp", "sstp", "vif", "dummy", "teql"
+    )
+    for p in virtual_prefixes:
+        if n.startswith(p):
+            return False
+    return True
+
+def get_device_physical_interfaces(interfaces):
+    """
+    Mengambil interface fisik dari kumpulan interface perangkat.
+    Jika ada interface fisik, kembalikan hanya interface fisik.
+    Jika perangkat tidak memiliki interface fisik teridentifikasi (misal VM / test environment),
+    kembalikan interface non-loopback dan non-subinterface.
+    """
+    phys = [i for i in interfaces if is_physical_interface(getattr(i, 'name', '') or '')]
+    if phys:
+        return phys
+    return [i for i in interfaces if (getattr(i, 'name', '') or '').lower() not in ("lo", "loopback", "null0") and "." not in (getattr(i, 'name', '') or '')]
 
 def classify_interface_type(name: str, if_type_num: int = 0) -> str:
     """Klasifikasi tipe interface: ethernet, vlan, backbone, bridge, wireless, other"""
@@ -532,6 +610,8 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
         # -----------------------------------------------------------------
         # LANGKAH 2: SUHU & TEGANGAN (ROUTEROS, JUNIPER, CISCO, ENTITY MIB)
         # -----------------------------------------------------------------
+        new_temperature = None
+        new_voltage = None
         try:
             # 2a. RouterOS 7 Health Item Table
             h_names = await walk_oid_column(snmp_engine, auth_data, transport, OID_MT_HEALTH_NAME, 20)
@@ -545,16 +625,16 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                             num_val = float(val_raw)
                             if "temp" in name_str and num_val > 0:
                                 parsed_t = round(num_val / 10.0 if num_val > 150 else num_val, 1)
-                                if "cpu" in name_str or dev.temperature is None:
-                                    dev.temperature = parsed_t
+                                if "cpu" in name_str or new_temperature is None:
+                                    new_temperature = parsed_t
                             elif "volt" in name_str and num_val > 0:
                                 parsed_v = round(num_val / 10.0 if num_val > 50 else num_val, 1)
-                                dev.voltage = parsed_v
+                                new_voltage = parsed_v
                         except Exception:
                             pass
 
             # 2b. RouterOS 6 Legacy OIDs
-            if dev.temperature is None or dev.voltage is None:
+            if new_temperature is None or new_voltage is None:
                 err_ind, err_stat, _, vbs = await get_cmd(
                     snmp_engine,
                     auth_data,
@@ -570,17 +650,17 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         val = vb[1]
                         try:
                             f_val = float(val)
-                            if oid_s.startswith(OID_MT_TEMP_BOARD[:-2]) and f_val > 0 and dev.temperature is None:
-                                dev.temperature = round(f_val if f_val < 200 else f_val / 10.0, 1)
-                            elif oid_s.startswith(OID_MT_TEMP_CPU[:-2]) and f_val > 0 and dev.temperature is None:
-                                dev.temperature = round(f_val if f_val < 200 else f_val / 10.0, 1)
-                            elif oid_s.startswith(OID_MT_VOLTAGE[:-2]) and f_val > 0 and dev.voltage is None:
-                                dev.voltage = round(f_val / 10.0 if f_val > 50 else f_val, 1)
+                            if oid_s.startswith(OID_MT_TEMP_BOARD[:-2]) and f_val > 0 and new_temperature is None:
+                                new_temperature = round(f_val if f_val < 200 else f_val / 10.0, 1)
+                            elif oid_s.startswith(OID_MT_TEMP_CPU[:-2]) and f_val > 0 and new_temperature is None:
+                                new_temperature = round(f_val if f_val < 200 else f_val / 10.0, 1)
+                            elif oid_s.startswith(OID_MT_VOLTAGE[:-2]) and f_val > 0 and new_voltage is None:
+                                new_voltage = round(f_val / 10.0 if f_val > 50 else f_val, 1)
                         except Exception:
                             pass
 
             # 2c. Juniper Operating Temperature (JUNIPER-MIB: jnxOperatingTemp)
-            if dev.temperature is None:
+            if new_temperature is None:
                 jnx_temps = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_TEMP, 20)
                 if jnx_temps:
                     valid_temps = []
@@ -594,10 +674,10 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     if valid_temps:
                         re_temps = [t for idx_s, t in valid_temps if any(x in idx_s for x in ["9.1", "7.1", "1.1"])]
                         chosen_t = re_temps[0] if re_temps else max(t for _, t in valid_temps)
-                        dev.temperature = round(chosen_t, 1)
+                        new_temperature = round(chosen_t, 1)
 
             # 2d. Cisco Temperature Sensor
-            if dev.temperature is None:
+            if new_temperature is None:
                 err_ind, err_stat, _, c_vbs = await get_cmd(
                     snmp_engine, auth_data, transport, ContextData(),
                     ObjectType(ObjectIdentity(OID_CISCO_TEMP))
@@ -606,18 +686,27 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     try:
                         c_t = float(c_vbs[0][1])
                         if 15.0 <= c_t <= 115.0:
-                            dev.temperature = round(c_t, 1)
+                            new_temperature = round(c_t, 1)
                     except Exception:
                         pass
         except Exception:
             pass
 
+        if new_temperature is not None:
+            dev.temperature = new_temperature
+        if new_voltage is not None:
+            dev.voltage = new_voltage
+
         # -----------------------------------------------------------------
         # LANGKAH 3: CPU & MEMORY USAGE (JUNIPER, MIKROTIK, CISCO, HOST-RESOURCES)
         # -----------------------------------------------------------------
+        new_cpu = None
+        new_mem_usage = None
+        new_mem_total = None
+        new_mem_used = None
         try:
             # 3a. CPU Load: Prioritaskan Juniper jnxOperatingCPU jika perangkat Juniper
-            if dev.device_type == "juniper" or dev.cpu_usage is None or dev.cpu_usage == 0.0:
+            if dev.device_type == "juniper":
                 jnx_cpus = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_CPU, 20)
                 if jnx_cpus:
                     valid_cpus = []
@@ -631,23 +720,25 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     if valid_cpus:
                         re_cpus = [c for idx_s, c in valid_cpus if any(x in idx_s for x in ["9.1", "7.1", "1.1"])]
                         chosen_cpu = re_cpus[0] if re_cpus else max(c for _, c in valid_cpus)
-                        dev.cpu_usage = round(chosen_cpu, 1)
+                        new_cpu = round(chosen_cpu, 1)
 
             # CPU Load via Host Resources MIB (hrProcessorLoad - multi-core support)
-            if dev.cpu_usage is None:
+            if new_cpu is None:
                 cpu_cores = await walk_oid_column(snmp_engine, auth_data, transport, OID_HR_PROCESSOR_LOAD, 16)
                 if cpu_cores:
                     loads = []
                     for _, core_load in cpu_cores.items():
                         try:
-                            loads.append(float(core_load))
+                            f_core = float(core_load)
+                            if 0.0 <= f_core <= 100.0:
+                                loads.append(f_core)
                         except Exception:
                             pass
                     if loads:
-                        dev.cpu_usage = round(sum(loads) / len(loads), 1)
+                        new_cpu = round(sum(loads) / len(loads), 1)
 
             # Cisco CPU Fallback (5-min average)
-            if dev.cpu_usage is None:
+            if new_cpu is None:
                 err_ind, err_stat, _, c_vbs = await get_cmd(
                     snmp_engine, auth_data, transport, ContextData(),
                     ObjectType(ObjectIdentity(OID_CISCO_CPU_5MIN)),
@@ -658,32 +749,34 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         try:
                             f_c = float(vb[1])
                             if 0.0 <= f_c <= 100.0:
-                                dev.cpu_usage = round(f_c, 1)
+                                new_cpu = round(f_c, 1)
                                 break
                         except Exception:
                             pass
 
             # Fallback legacy MikroTik CPU scalar
-            if dev.cpu_usage is None:
+            if new_cpu is None:
                 err_ind, err_stat, _, vbs = await get_cmd(
                     snmp_engine, auth_data, transport, ContextData(),
                     ObjectType(ObjectIdentity(OID_MT_ACTIVE_CPU))
                 )
                 if not err_ind and not err_stat and vbs:
                     try:
-                        dev.cpu_usage = float(vbs[0][1])
+                        f_c = float(vbs[0][1])
+                        if 0.0 <= f_c <= 100.0:
+                            new_cpu = round(f_c, 1)
                     except Exception:
                         pass
 
             # 3b. RAM Memory: Juniper Buffer & DRAM MIB
-            if dev.device_type == "juniper" or dev.memory_usage is None:
+            if dev.device_type == "juniper":
                 jnx_bufs = await walk_oid_column(snmp_engine, auth_data, transport, OID_JNX_OPERATING_BUFFER, 15)
                 if jnx_bufs:
                     for b_idx, b_val in jnx_bufs.items():
                         try:
                             f_b = float(b_val)
                             if 0.0 < f_b <= 100.0:
-                                dev.memory_usage = round(f_b, 1)
+                                new_mem_usage = round(f_b, 1)
                                 break
                         except Exception:
                             pass
@@ -694,15 +787,15 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         try:
                             dram_bytes = float(d_val)
                             if dram_bytes > (64 * 1024 * 1024):
-                                dev.memory_total_mb = round(dram_bytes / (1024 * 1024), 1)
-                                if dev.memory_usage is not None:
-                                    dev.memory_used_mb = round(dev.memory_total_mb * (dev.memory_usage / 100.0), 1)
+                                new_mem_total = round(dram_bytes / (1024 * 1024), 1)
+                                if new_mem_usage is not None:
+                                    new_mem_used = round(new_mem_total * (new_mem_usage / 100.0), 1)
                                 break
                         except Exception:
                             pass
 
             # Host Resources Storage MIB (RAM)
-            if dev.memory_usage is None:
+            if new_mem_usage is None:
                 stor_descrs = await walk_oid_column(snmp_engine, auth_data, transport, OID_HR_STORAGE_DESCR, 25)
                 ram_idx = None
                 for idx, descr_val in stor_descrs.items():
@@ -725,12 +818,12 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         if total_units > 0 and units > 0:
                             total_bytes = total_units * units
                             used_bytes = used_units * units
-                            dev.memory_total_mb = round(total_bytes / (1024 * 1024), 1)
-                            dev.memory_used_mb = round(used_bytes / (1024 * 1024), 1)
-                            dev.memory_usage = round((used_bytes / total_bytes) * 100, 1)
+                            new_mem_total = round(total_bytes / (1024 * 1024), 1)
+                            new_mem_used = round(used_bytes / (1024 * 1024), 1)
+                            new_mem_usage = round((used_bytes / total_bytes) * 100, 1)
 
             # Fallback legacy MikroTik RAM scalar
-            if dev.memory_usage is None:
+            if new_mem_usage is None:
                 err_ind, err_stat, _, vbs = await get_cmd(
                     snmp_engine, auth_data, transport, ContextData(),
                     ObjectType(ObjectIdentity(OID_MT_TOTAL_MEM)),
@@ -741,12 +834,21 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     f_mem = float(vbs[1][1])
                     if t_mem > 0:
                         u_mem = max(0, t_mem - f_mem)
-                        dev.memory_total_mb = round(t_mem / (1024 * 1024), 1)
-                        dev.memory_used_mb = round(u_mem / (1024 * 1024), 1)
-                        dev.memory_usage = round((u_mem / t_mem) * 100, 1)
+                        new_mem_total = round(t_mem / (1024 * 1024), 1)
+                        new_mem_used = round(u_mem / (1024 * 1024), 1)
+                        new_mem_usage = round((u_mem / t_mem) * 100, 1)
 
         except Exception:
             pass
+
+        if new_cpu is not None:
+            dev.cpu_usage = new_cpu
+        if new_mem_usage is not None:
+            dev.memory_usage = new_mem_usage
+        if new_mem_total is not None:
+            dev.memory_total_mb = new_mem_total
+        if new_mem_used is not None:
+            dev.memory_used_mb = new_mem_used
 
         # -----------------------------------------------------------------
         # LANGKAH 4: INTERFACES, TRAFFIC RATE & DETAIL SFP / OPTIK (MIKROTIK & JUNIPER DOM)
@@ -786,6 +888,7 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
 
                 # 4a. Ambil data tabel Optical SFP MikroTik (DDM)
                 optical_by_name = {}
+                optical_by_idx = {}
                 try:
                     opt_names = await walk_oid_column(snmp_engine, auth_data, transport, OID_MT_OPT_NAME, 25)
                     if opt_names:
@@ -819,19 +922,26 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                             k_name = str(o_name_val).strip().lower()
                             part_num = str(opt_part.get(o_idx, "")).strip() or str(opt_rev.get(o_idx, "")).strip() or None
                             serial_num = str(opt_serial.get(o_idx, "")).strip() or None
+                            parsed_rx_pwr = parse_optical_power(opt_rx_pow.get(o_idx))
+                            parsed_tx_pwr = parse_optical_power(opt_tx_pow.get(o_idx))
+                            rx_loss_flag = bool(int(opt_rx_loss.get(o_idx, 0)) == 1) or (parsed_rx_pwr is not None and parsed_rx_pwr <= -35.0)
 
-                            optical_by_name[k_name] = {
-                                "rx_loss": bool(int(opt_rx_loss.get(o_idx, 0)) == 1),
+                            opt_entry = {
+                                "rx_loss": rx_loss_flag,
                                 "tx_fault": bool(int(opt_tx_fault.get(o_idx, 0)) == 1),
                                 "wavelength": parse_wavelength(opt_wave.get(o_idx)),
                                 "temperature": parse_optical_temp(opt_temp.get(o_idx)),
                                 "voltage": parse_optical_voltage(opt_volt.get(o_idx)),
-                                "tx_power": parse_optical_power(opt_tx_pow.get(o_idx)),
-                                "rx_power": parse_optical_power(opt_rx_pow.get(o_idx)),
+                                "tx_power": parsed_tx_pwr,
+                                "rx_power": parsed_rx_pwr,
                                 "vendor": str(opt_vendor.get(o_idx, "")).strip() or None,
                                 "serial": serial_num,
                                 "part": part_num,
                             }
+                            optical_by_name[k_name] = opt_entry
+                            optical_by_idx[o_idx] = opt_entry
+                            norm_k = k_name.replace("-", "").replace("_", "").replace(" ", "")
+                            optical_by_name[norm_k] = opt_entry
                 except Exception:
                     pass
 
@@ -901,17 +1011,28 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                     speed_mbps_val = int(speeds_dict.get(if_idx, 0)) if speeds_dict.get(if_idx) else None
                     port_speed_label = determine_port_speed(if_name, speed_mbps_val)
                     
-                    is_sfp_port = (
-                        ("sfp" in if_name.lower()) or 
-                        if_name.lower().startswith("xe-") or 
-                        if_name.lower().startswith("et-") or 
-                        ("10g" in if_name.lower()) or
-                        (speed_mbps_val is not None and speed_mbps_val >= 10000) or
-                        (if_name.lower() in optical_by_name) or
-                        (if_idx in jnx_optical_by_idx)
+                    clean_name = if_name.lower().strip()
+                    norm_name = clean_name.replace("-", "").replace("_", "").replace(" ", "")
+
+                    # Matching optical DDM data dengan prioritas: OID Index -> Nama exact -> Nama normalized -> Juniper DOM
+                    opt_data = (
+                        optical_by_idx.get(if_idx) or
+                        optical_by_name.get(clean_name) or
+                        optical_by_name.get(norm_name) or
+                        jnx_optical_by_idx.get(if_idx, {})
                     )
 
-                    opt_data = optical_by_name.get(if_name.lower()) or jnx_optical_by_idx.get(if_idx, {})
+                    is_sfp_port = (
+                        ("sfp" in clean_name) or 
+                        clean_name.startswith("xe-") or 
+                        clean_name.startswith("et-") or 
+                        ("10g" in clean_name) or
+                        (speed_mbps_val is not None and speed_mbps_val >= 10000) or
+                        (clean_name in optical_by_name) or
+                        (norm_name in optical_by_name) or
+                        (if_idx in optical_by_idx) or
+                        (if_idx in jnx_optical_by_idx)
+                    )
 
                     new_rx = int(rx_dict.get(if_idx, 0))
                     new_tx = int(tx_dict.get(if_idx, 0))
@@ -925,11 +1046,11 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         rx_rate = 0.0
                         tx_rate = 0.0
 
-                        if prev_time and new_rx >= prev_rx and new_tx >= prev_tx:
+                        if prev_time:
                             delta_sec = (now_dt - prev_time).total_seconds()
-                            if 0 < delta_sec < 600:
-                                rx_rate = round(((new_rx - prev_rx) * 8) / (delta_sec * 1_000_000), 2)
-                                tx_rate = round(((new_tx - prev_tx) * 8) / (delta_sec * 1_000_000), 2)
+                            if 0.1 <= delta_sec <= 600.0:
+                                rx_rate = calculate_counter_rate(new_rx, prev_rx, delta_sec, has_hc, speed_mbps_val)
+                                tx_rate = calculate_counter_rate(new_tx, prev_tx, delta_sec, has_hc, speed_mbps_val)
 
                         iface_obj.name = if_name
                         iface_obj.alias = alias
@@ -1221,8 +1342,9 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
 
         # Rekam snapshot traffic ke tabel histori (NetworkTrafficHistory)
         try:
-            total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in dev.interfaces)
-            total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in dev.interfaces)
+            phys_ifaces = get_device_physical_interfaces(dev.interfaces)
+            total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in phys_ifaces)
+            total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in phys_ifaces)
             hist = NetworkTrafficHistory(
                 device_id=dev.id,
                 site=dev.site or "Fasilkom",
