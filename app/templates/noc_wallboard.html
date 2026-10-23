@@ -270,6 +270,13 @@
             0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
             50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.7); }
         }
+        @keyframes alarm-pulse {
+            0%, 100% { box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+            50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.85); border-color: #ef4444; color: #ef4444; }
+        }
+        .btn-alarm-flash {
+            animation: alarm-pulse 0.4s ease-in-out 3;
+        }
     </style>
 </head>
 <body class="noc-grid-overlay">
@@ -325,9 +332,9 @@
             </button>
 
             <!-- Audio Alert Toggle -->
-            <button class="btn btn-noc" id="btnAudioToggle" onclick="toggleAudioAlert()" title="Bunyikan suara peringatan jika link putus">
-                <i class="bi bi-bell-slash" id="audioIcon"></i>
-                <span class="d-none d-sm-inline ms-1" id="audioText">Bisu</span>
+            <button class="btn btn-noc active" id="btnAudioToggle" onclick="toggleAudioAlert()" title="Bunyikan suara peringatan jika link / koneksi putus">
+                <i class="bi bi-bell-fill text-warning" id="audioIcon"></i>
+                <span class="d-none d-sm-inline ms-1" id="audioText">Suara: On</span>
             </button>
 
             <!-- Sync Timer Ring -->
@@ -1018,7 +1025,9 @@
         let countdown = REFRESH_INTERVAL_SEC;
         let selectedSite = '';
         let currentRange = '1d';
-        let audioAlertEnabled = false;
+        const savedAudioPref = localStorage.getItem('noc_audio_enabled');
+        let audioAlertEnabled = (savedAudioPref === null) ? true : (savedAudioPref === 'true');
+        let lastAlertSoundTime = 0;
         let prevOfflineCount = 0;
         let prevLosCount = 0;
         let prevIncidentCount = 0;
@@ -1097,47 +1106,138 @@
         setInterval(updateNocClock, 1000);
         updateNocClock();
 
-        // Web Audio API Beep Synthesizer
-        function playNocAlertTone() {
-            if (!audioAlertEnabled) return;
+        // Web Audio API Global Engine & Unlocking
+        let globalAudioCtx = null;
+        function getAudioContext() {
             try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
+                if (!globalAudioCtx) {
+                    const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtxClass) {
+                        globalAudioCtx = new AudioCtxClass();
+                    }
+                }
+                if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+                    globalAudioCtx.resume().catch(() => {});
+                }
+            } catch (e) {
+                console.warn("AudioContext init error:", e);
+            }
+            return globalAudioCtx;
+        }
 
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.35);
+        // Auto unlock AudioContext on first user interaction anywhere
+        function unlockAudioOnInteraction() {
+            const unlock = () => {
+                getAudioContext();
+                document.removeEventListener('click', unlock);
+                document.removeEventListener('keydown', unlock);
+                document.removeEventListener('touchstart', unlock);
+            };
+            document.addEventListener('click', unlock, { once: true, passive: true });
+            document.addEventListener('keydown', unlock, { once: true, passive: true });
+            document.addEventListener('touchstart', unlock, { once: true, passive: true });
+        }
+        unlockAudioOnInteraction();
 
-                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+        // Single Tone Pulse Generator
+        function playBeep(ctx, freq, startTime, duration, vol = 0.5) {
+            try {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                // 'triangle' waveform produces richer acoustic harmonics for TV speakers
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, startTime);
+
+                gain.gain.setValueAtTime(vol, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
                 osc.connect(gain);
-                gain.connect(audioCtx.destination);
+                gain.connect(ctx.destination);
 
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.35);
-            } catch (e) {
-                console.error("Audio synth error:", e);
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            } catch (err) {
+                console.warn("Beep audio error:", err);
+            }
+        }
+
+        // Professional NOC Emergency Warning Alarm Synthesizer
+        function playNocAlertTone(toneType = 'alarm', incidentSummary = null) {
+            if (!audioAlertEnabled) return;
+            const ctx = getAudioContext();
+            if (!ctx) return;
+
+            const now = ctx.currentTime;
+
+            if (toneType === 'test') {
+                // Double chime for testing sound confirmation
+                playBeep(ctx, 880, now, 0.12, 0.35);
+                playBeep(ctx, 1174, now + 0.15, 0.20, 0.40);
+                return;
+            }
+
+            // Real NOC Warning Siren (3-stage alternating emergency alarm)
+            playBeep(ctx, 920, now + 0.00, 0.14, 0.6);
+            playBeep(ctx, 680, now + 0.16, 0.14, 0.5);
+            playBeep(ctx, 920, now + 0.34, 0.14, 0.6);
+            playBeep(ctx, 680, now + 0.50, 0.14, 0.5);
+            playBeep(ctx, 1040, now + 0.68, 0.25, 0.7);
+
+            // Flash audio button visually to indicate alarm is sounding
+            const audioBtn = document.getElementById('btnAudioToggle');
+            if (audioBtn) {
+                audioBtn.classList.add('btn-alarm-flash');
+                setTimeout(() => audioBtn.classList.remove('btn-alarm-flash'), 1200);
+            }
+
+            // Voice announcement (SpeechSynthesis)
+            if ('speechSynthesis' in window && window.speechSynthesis) {
+                setTimeout(() => {
+                    if (!audioAlertEnabled) return;
+                    try {
+                        let text = "Peringatan! Koneksi jaringan terputus!";
+                        if (incidentSummary && incidentSummary.site) {
+                            text = `Peringatan! Insiden putus di Site ${incidentSummary.site}!`;
+                        }
+                        const utterance = new SpeechSynthesisUtterance(text);
+                        utterance.lang = "id-ID";
+                        utterance.rate = 1.05;
+                        utterance.volume = 0.95;
+                        window.speechSynthesis.speak(utterance);
+                    } catch (e) {}
+                }, 950);
+            }
+        }
+
+        function updateAudioToggleUI() {
+            const btn = document.getElementById('btnAudioToggle');
+            const icon = document.getElementById('audioIcon');
+            const txt = document.getElementById('audioText');
+            if (!btn || !icon || !txt) return;
+
+            if (audioAlertEnabled) {
+                btn.classList.add('active');
+                icon.className = 'bi bi-bell-fill text-warning';
+                txt.innerText = 'Suara: On';
+            } else {
+                btn.classList.remove('active');
+                icon.className = 'bi bi-bell-slash text-secondary';
+                txt.innerText = 'Suara: Off';
             }
         }
 
         function toggleAudioAlert() {
             audioAlertEnabled = !audioAlertEnabled;
-            const btn = document.getElementById('btnAudioToggle');
-            const icon = document.getElementById('audioIcon');
-            const txt = document.getElementById('audioText');
+            localStorage.setItem('noc_audio_enabled', audioAlertEnabled ? 'true' : 'false');
+            updateAudioToggleUI();
+
             if (audioAlertEnabled) {
-                btn.classList.add('active');
-                icon.className = 'bi bi-bell-fill text-warning';
-                txt.innerText = 'Aktif';
-                playNocAlertTone();
-            } else {
-                btn.classList.remove('active');
-                icon.className = 'bi bi-bell-slash';
-                txt.innerText = 'Bisu';
+                getAudioContext();
+                playNocAlertTone('test');
             }
         }
+        updateAudioToggleUI();
 
         // Fullscreen Toggle
         function toggleFullscreen() {
@@ -1567,13 +1667,22 @@
                         bannerDetails.innerHTML = detailsHtml;
                     }
 
-                    // Trigger sound alarm if new incidents appear
-                    if (incidents.length > prevIncidentCount) {
-                        playNocAlertTone();
+                    // Trigger sound alarm if:
+                    // 1. Immediately when a new incident appears (count increased)
+                    // 2. OR periodic reminder every 30s as long as critical link/incident is still down
+                    const nowMs = Date.now();
+                    const hasNewIncident = incidents.length > prevIncidentCount;
+                    const isPeriodicReminder = (nowMs - lastAlertSoundTime > 30000);
+
+                    if (hasNewIncident || isPeriodicReminder) {
+                        const topInc = incidents[0];
+                        playNocAlertTone('alarm', topInc);
+                        lastAlertSoundTime = nowMs;
                     }
                 } else {
                     banner.style.display = 'none';
                     if (bannerDetails) bannerDetails.innerHTML = '';
+                    lastAlertSoundTime = 0;
                 }
                 prevIncidentCount = incidents.length;
 
