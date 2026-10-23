@@ -965,8 +965,10 @@ def get_nms_telemetry_payload(db: Session):
             device_name = iface.get("device_name", "-")
             site = iface.get("site") or "Default"
             pwr = iface.get("sfp_rx_power")
+            inc_id = f"los_{iface.get('device_id', 0)}_{port_name}"
 
             incidents.append({
+                "id": inc_id,
                 "type": "fiber_los",
                 "badge": "FIBER PUTUS (LOS)",
                 "site": site,
@@ -983,6 +985,7 @@ def get_nms_telemetry_payload(db: Session):
     for d in devices:
         if not d.is_online:
             incidents.append({
+                "id": f"off_{d.id}",
                 "type": "device_offline",
                 "badge": "PERANGKAT OFFLINE",
                 "site": d.site or "Default",
@@ -999,6 +1002,7 @@ def get_nms_telemetry_payload(db: Session):
     for up in uplinks_data:
         if up.get("peer_ip") and up.get("peer_ip") != "-" and not up.get("is_established"):
             incidents.append({
+                "id": f"bgp_{up.get('key', 'uplink')}",
                 "type": "bgp_down",
                 "badge": "BGP DOWN",
                 "site": "Core / BGP",

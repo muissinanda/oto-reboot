@@ -392,6 +392,9 @@
                     <span class="badge bg-danger font-mono fs-6 px-2.5 py-1" id="alertBannerCount">
                         {{ incidents|length }} Insiden Aktif
                     </span>
+                    <button class="btn btn-sm btn-outline-warning py-1 px-2.5 rounded-2 font-mono" id="btnMuteAllIncidents" onclick="toggleMuteAllIncidents()" title="Matikan / Hidupkan semua alarm gangguan yang sedang aktif">
+                        <i class="bi bi-bell-slash me-1"></i>Mute Semua
+                    </button>
                     <button class="btn btn-sm btn-outline-danger py-0 px-2 rounded-2 text-light" onclick="toggleAlertBanner(true)" title="Sembunyikan Peringatan">
                         <i class="bi bi-x-lg"></i>
                     </button>
@@ -401,7 +404,10 @@
             <!-- DETAILED INCIDENT CARDS / CHIPS -->
             <div id="alertBannerDetails" class="mt-2.5 pt-2.5 border-top border-danger border-opacity-25 d-flex flex-column gap-2" {% if incidents|length == 0 %}style="display: none;"{% endif %}>
                 {% for inc in incidents %}
-                <div class="d-flex align-items-center justify-content-between p-2 px-3 rounded-2 font-mono flex-wrap gap-2" style="background: rgba(0, 0, 0, 0.45); border-left: 4px solid #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">
+                {% set inc_id = inc.id or ('los_' ~ inc.site ~ '_' ~ inc.port_name) %}
+                <div class="d-flex align-items-center justify-content-between p-2 px-3 rounded-2 font-mono flex-wrap gap-2 transition-all" 
+                     id="incCard_{{ inc_id }}"
+                     style="background: rgba(0, 0, 0, 0.45); border-left: 4px solid #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="badge bg-danger font-mono text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.04em;">{{ inc.badge }}</span>
                         <span class="text-secondary">|</span>
@@ -416,12 +422,21 @@
                             <span>Info: <strong class="text-cyan">[{{ inc.port_display }}]</strong></span>
                         {% endif %}
                     </div>
-                    <div class="text-danger small fw-bold font-mono d-flex align-items-center gap-1.5">
-                        <i class="bi bi-x-circle-fill"></i>
-                        <span>{{ inc.desc }}</span>
-                        {% if inc.sfp_rx_power is not none %}
-                            <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.68rem;">{{ inc.sfp_rx_power|round(2) }} dBm</span>
-                        {% endif %}
+                    <div class="d-flex align-items-center gap-2.5 flex-wrap ms-auto">
+                        <div class="text-danger small fw-bold font-mono d-flex align-items-center gap-1.5">
+                            <i class="bi bi-x-circle-fill"></i>
+                            <span>{{ inc.desc }}</span>
+                            {% if inc.sfp_rx_power is not none %}
+                                <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.68rem;">{{ inc.sfp_rx_power|round(2) }} dBm</span>
+                            {% endif %}
+                        </div>
+                        <button class="btn btn-sm btn-outline-warning text-warning border-warning py-0.5 px-2 rounded-2 font-mono d-inline-flex align-items-center gap-1 fw-bold"
+                                style="font-size: 0.72rem;"
+                                onclick="toggleMuteIncident('{{ inc_id }}', event)" 
+                                title="Matikan suara alarm untuk port / insiden ini">
+                            <i class="bi bi-bell-slash"></i>
+                            <span>Matikan Alarm</span>
+                        </button>
                     </div>
                 </div>
                 {% endfor %}
@@ -1028,6 +1043,9 @@
         const savedAudioPref = localStorage.getItem('noc_audio_enabled');
         let audioAlertEnabled = (savedAudioPref === null) ? true : (savedAudioPref === 'true');
         let lastAlertSoundTime = 0;
+        let mutedIncidents = new Set(JSON.parse(localStorage.getItem('noc_muted_incidents') || '[]'));
+        let lastKnownIncidents = [];
+        let prevAudibleIncidentCount = 0;
         let prevOfflineCount = 0;
         let prevLosCount = 0;
         let prevIncidentCount = 0;
@@ -1035,6 +1053,142 @@
         let prevTopIfaceSig = '';
         let lastKnownIncidentCount = 0;
         let isAlertBannerHidden = localStorage.getItem('noc_alert_hidden') === 'true';
+
+        function toggleMuteIncident(id, event) {
+            if (event) event.stopPropagation();
+            if (mutedIncidents.has(id)) {
+                mutedIncidents.delete(id);
+            } else {
+                mutedIncidents.add(id);
+            }
+            localStorage.setItem('noc_muted_incidents', JSON.stringify(Array.from(mutedIncidents)));
+            if (lastKnownIncidents && lastKnownIncidents.length > 0) {
+                renderAlertIncidents(lastKnownIncidents);
+            }
+        }
+
+        function toggleMuteAllIncidents() {
+            if (!lastKnownIncidents || lastKnownIncidents.length === 0) return;
+            const hasUnmuted = lastKnownIncidents.some(inc => !mutedIncidents.has(inc.id));
+            if (hasUnmuted) {
+                lastKnownIncidents.forEach(inc => mutedIncidents.add(inc.id));
+            } else {
+                lastKnownIncidents.forEach(inc => mutedIncidents.delete(inc.id));
+            }
+            localStorage.setItem('noc_muted_incidents', JSON.stringify(Array.from(mutedIncidents)));
+            renderAlertIncidents(lastKnownIncidents);
+        }
+
+        function renderAlertIncidents(incidents) {
+            const banner = document.getElementById('alertBanner');
+            const bannerText = document.getElementById('alertBannerText');
+            const bannerCount = document.getElementById('alertBannerCount');
+            const bannerDetails = document.getElementById('alertBannerDetails');
+            const btnMuteAll = document.getElementById('btnMuteAllIncidents');
+
+            if (!banner) return;
+
+            if (!incidents || incidents.length === 0) {
+                banner.style.display = 'none';
+                if (bannerDetails) bannerDetails.innerHTML = '';
+                lastAlertSoundTime = 0;
+                return;
+            }
+
+            if (!isAlertBannerHidden) {
+                banner.style.display = 'block';
+            } else {
+                banner.style.display = 'none';
+            }
+
+            const audibleList = incidents.filter(i => !mutedIncidents.has(i.id));
+            const mutedCount = incidents.length - audibleList.length;
+
+            if (bannerCount) {
+                if (mutedCount > 0) {
+                    bannerCount.innerHTML = `${incidents.length} Insiden Aktif <span class="badge bg-warning text-dark ms-1 font-mono">${mutedCount} Di-Mute</span>`;
+                } else {
+                    bannerCount.innerText = `${incidents.length} Insiden Aktif`;
+                }
+            }
+
+            if (btnMuteAll) {
+                if (audibleList.length === 0 && incidents.length > 0) {
+                    btnMuteAll.className = 'btn btn-sm btn-outline-success py-1 px-2.5 rounded-2 font-mono';
+                    btnMuteAll.innerHTML = '<i class="bi bi-bell-fill me-1"></i>Unmute Semua';
+                    btnMuteAll.title = 'Hidupkan kembali alarm semua gangguan';
+                } else {
+                    btnMuteAll.className = 'btn btn-sm btn-outline-warning py-1 px-2.5 rounded-2 font-mono';
+                    btnMuteAll.innerHTML = '<i class="bi bi-bell-slash me-1"></i>Mute Semua';
+                    btnMuteAll.title = 'Matikan alarm semua gangguan yang aktif';
+                }
+            }
+
+            if (incidents.length === 1) {
+                const inc = incidents[0];
+                const isM = mutedIncidents.has(inc.id);
+                bannerText.innerHTML = `PERINGATAN NOC: <b>${inc.desc}</b> di Site <span class="text-warning text-uppercase">[${inc.site}]</span> • Perangkat <span class="text-light">[${inc.device_name}]</span> • Port <span class="text-cyan">[${inc.port_display}]</span>! ${isM ? '<span class="badge bg-warning text-dark ms-1">Alarm Di-Mute</span>' : 'Segera periksa koneksi!'}`;
+            } else {
+                bannerText.innerHTML = `PERINGATAN NOC: <b>${incidents.length} Gangguan Terdeteksi</b> pada Jaringan! ${audibleList.length === 0 ? '<span class="badge bg-warning text-dark ms-1">Semua Alarm Di-Mute</span>' : 'Periksa rincian di bawah:'}`;
+            }
+
+            let detailsHtml = '';
+            incidents.forEach(inc => {
+                const isMuted = mutedIncidents.has(inc.id);
+                const pwrBadge = (inc.sfp_rx_power !== null && inc.sfp_rx_power !== undefined) 
+                    ? `<span class="badge ms-1" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.68rem;">${Number(inc.sfp_rx_power).toFixed(2)} dBm</span>` 
+                    : '';
+                const portPart = inc.port_name !== '-' 
+                    ? `<span class="text-secondary">|</span><span>Port: <strong class="text-cyan">[${inc.port_display}]</strong></span>` 
+                    : `<span class="text-secondary">|</span><span>Info: <strong class="text-cyan">[${inc.port_display}]</strong></span>`;
+
+                const badgeMuted = isMuted 
+                    ? `<span class="badge font-mono text-uppercase" style="background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.5); font-size: 0.68rem;"><i class="bi bi-bell-slash-fill me-1"></i>ALARM DI-MUTE</span>` 
+                    : '';
+
+                detailsHtml += `
+                    <div class="d-flex align-items-center justify-content-between p-2 px-3 rounded-2 font-mono flex-wrap gap-2 transition-all" 
+                         id="incCard_${inc.id}"
+                         style="background: rgba(0, 0, 0, ${isMuted ? '0.35' : '0.55'}); border-left: 4px solid ${isMuted ? '#f59e0b' : '#ef4444'}; border: 1px solid ${isMuted ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.25)'}; ${isMuted ? 'opacity: 0.82;' : ''}">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="badge ${isMuted ? 'bg-secondary' : 'bg-danger'} font-mono text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.04em;">${inc.badge}</span>
+                            ${badgeMuted}
+                            <span class="text-secondary">|</span>
+                            <span>Site: <strong class="text-warning text-uppercase" style="font-size: 0.88rem;">[${inc.site}]</strong></span>
+                            <span class="text-secondary">|</span>
+                            <span>Perangkat: <strong class="text-light">[${inc.device_name}]</strong></span>
+                            ${portPart}
+                        </div>
+                        <div class="d-flex align-items-center gap-2.5 flex-wrap ms-auto">
+                            <div class="${isMuted ? 'text-secondary' : 'text-danger'} small fw-bold font-mono d-flex align-items-center gap-1.5">
+                                <i class="bi ${isMuted ? 'bi-dash-circle' : 'bi-x-circle-fill'}"></i>
+                                <span class="${isMuted ? 'text-decoration-line-through text-opacity-75' : ''}">${inc.desc}</span>
+                                ${pwrBadge}
+                            </div>
+                            <button class="btn btn-sm ${isMuted ? 'btn-outline-success text-success border-success' : 'btn-outline-warning text-warning border-warning'} py-0.5 px-2 rounded-2 font-mono d-inline-flex align-items-center gap-1 fw-bold"
+                                    style="font-size: 0.72rem; letter-spacing: 0.02em;"
+                                    onclick="toggleMuteIncident('${inc.id}', event)" 
+                                    title="${isMuted ? 'Hidupkan kembali suara alarm untuk port / insiden ini' : 'Matikan suara alarm untuk port / insiden ini'}">
+                                <i class="bi ${isMuted ? 'bi-bell-fill' : 'bi-bell-slash'}"></i>
+                                <span>${isMuted ? 'Hidupkan Alarm' : 'Matikan Alarm'}</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (bannerDetails) {
+                bannerDetails.style.display = 'flex';
+                bannerDetails.innerHTML = detailsHtml;
+            }
+        }
+
+        {% if incidents %}
+        try {
+            lastKnownIncidents = {{ incidents|tojson }};
+            renderAlertIncidents(lastKnownIncidents);
+        } catch(e) {}
+        {% endif %}
 
         function updateAlertToggleUI(incidentCount) {
             const btn = document.getElementById('btnAlertToggle');
@@ -1634,79 +1788,32 @@
                     }
                 }
 
-                // 3. Critical Alert Banner with Detailed Incidents (Site, Perangkat, Port)
-                const banner = document.getElementById('alertBanner');
-                const bannerText = document.getElementById('alertBannerText');
-                const bannerCount = document.getElementById('alertBannerCount');
-                const bannerDetails = document.getElementById('alertBannerDetails');
-
+                // 3. Critical Alert Banner with Detailed Incidents (Site, Perangkat, Port) & Per-Port Alarm Mute
                 const incidents = data.incidents || [];
                 lastKnownIncidentCount = incidents.length;
+                lastKnownIncidents = incidents;
                 updateAlertToggleUI(incidents.length);
 
+                renderAlertIncidents(incidents);
+
                 if (incidents.length > 0) {
-                    if (!isAlertBannerHidden) {
-                        banner.style.display = 'block';
-                    } else {
-                        banner.style.display = 'none';
-                    }
-                    bannerCount.innerText = `${incidents.length} Insiden Aktif`;
-
-                    if (incidents.length === 1) {
-                        const inc = incidents[0];
-                        bannerText.innerHTML = `PERINGATAN NOC: <b>${inc.desc}</b> di Site <span class="text-warning text-uppercase">[${inc.site}]</span> • Perangkat <span class="text-light">[${inc.device_name}]</span> • Port <span class="text-cyan">[${inc.port_display}]</span>! Segera periksa koneksi!`;
-                    } else {
-                        bannerText.innerHTML = `PERINGATAN NOC: <b>${incidents.length} Gangguan Terdeteksi</b> pada Jaringan! Periksa rincian di bawah:`;
-                    }
-
-                    let detailsHtml = '';
-                    incidents.forEach(inc => {
-                        const pwrBadge = (inc.sfp_rx_power !== null && inc.sfp_rx_power !== undefined) 
-                            ? `<span class="badge ms-1" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 0.68rem;">${Number(inc.sfp_rx_power).toFixed(2)} dBm</span>` 
-                            : '';
-                        const portPart = inc.port_name !== '-' 
-                            ? `<span class="text-secondary">|</span><span>Port: <strong class="text-cyan">[${inc.port_display}]</strong></span>` 
-                            : `<span class="text-secondary">|</span><span>Info: <strong class="text-cyan">[${inc.port_display}]</strong></span>`;
-
-                        detailsHtml += `
-                            <div class="d-flex align-items-center justify-content-between p-2 px-3 rounded-2 font-mono flex-wrap gap-2" style="background: rgba(0, 0, 0, 0.45); border-left: 4px solid #ef4444; border: 1px solid rgba(239, 68, 68, 0.25);">
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="badge bg-danger font-mono text-uppercase" style="font-size: 0.72rem; letter-spacing: 0.04em;">${inc.badge}</span>
-                                    <span class="text-secondary">|</span>
-                                    <span>Site: <strong class="text-warning text-uppercase" style="font-size: 0.88rem;">[${inc.site}]</strong></span>
-                                    <span class="text-secondary">|</span>
-                                    <span>Perangkat: <strong class="text-light">[${inc.device_name}]</strong></span>
-                                    ${portPart}
-                                </div>
-                                <div class="text-danger small fw-bold font-mono d-flex align-items-center gap-1.5">
-                                    <i class="bi bi-x-circle-fill"></i>
-                                    <span>${inc.desc}</span>
-                                    ${pwrBadge}
-                                </div>
-                            </div>
-                        `;
-                    });
-                    if (bannerDetails) {
-                        bannerDetails.style.display = 'flex';
-                        bannerDetails.innerHTML = detailsHtml;
-                    }
-
-                    // Trigger sound alarm if:
-                    // 1. Immediately when a new incident appears (count increased)
-                    // 2. OR periodic reminder every 30s as long as critical link/incident is still down
+                    // Trigger sound alarm ONLY for audible (unmuted) down ports / incidents!
+                    const audibleIncidents = incidents.filter(i => !mutedIncidents.has(i.id));
                     const nowMs = Date.now();
-                    const hasNewIncident = incidents.length > prevIncidentCount;
-                    const isPeriodicReminder = (nowMs - lastAlertSoundTime > 30000);
+                    const hasNewAudible = audibleIncidents.length > prevAudibleIncidentCount;
+                    const isPeriodicReminder = (audibleIncidents.length > 0 && (nowMs - lastAlertSoundTime > 30000));
 
-                    if (hasNewIncident || isPeriodicReminder) {
-                        const topInc = incidents[0];
+                    if (hasNewAudible || isPeriodicReminder) {
+                        const topInc = audibleIncidents[0];
                         playNocAlertTone('alarm', topInc);
                         lastAlertSoundTime = nowMs;
+                    } else if (audibleIncidents.length === 0) {
+                        lastAlertSoundTime = 0;
                     }
+                    prevAudibleIncidentCount = audibleIncidents.length;
                 } else {
-                    banner.style.display = 'none';
-                    if (bannerDetails) bannerDetails.innerHTML = '';
                     lastAlertSoundTime = 0;
+                    prevAudibleIncidentCount = 0;
                 }
                 prevIncidentCount = incidents.length;
 
