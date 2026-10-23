@@ -1389,12 +1389,33 @@
             return anyMale || null;
         }
 
-        // Voice Alert (Firm Male Voice - Bahasa Indonesia)
-        function speakAlertVoice(text) {
+        // Voice Alert (Gentle & Firm Male Voice - Microsoft Ardi Neural Audio with Fallback)
+        function playGentleMaleAudio(siteName, fallbackText) {
+            let audioUrl = '';
+            if (siteName === '__test__') {
+                audioUrl = '/static/audio/alert_test.mp3';
+            } else if (siteName) {
+                audioUrl = `/api/audio/alert?site=${encodeURIComponent(siteName)}`;
+            } else {
+                audioUrl = '/static/audio/alert_default.mp3';
+            }
+
+            const audio = new Audio(audioUrl);
+            audio.volume = 1.0;
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.warn("Server MP3 audio playback error, using SpeechSynthesis fallback:", err);
+                    speakFallbackVoice(fallbackText);
+                });
+            }
+        }
+
+        // Web Speech API Fallback for offline / network failure
+        function speakFallbackVoice(text) {
             if (!('speechSynthesis' in window) || !window.speechSynthesis) return;
             try {
-                window.speechSynthesis.cancel(); // clear previous stuck speech
-
+                window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = "id-ID";
                 
@@ -1403,18 +1424,16 @@
                     utterance.voice = maleVoice;
                     const isKnownMale = maleVoice.name.toLowerCase().includes('ardi') || 
                                         maleVoice.name.toLowerCase().includes('andika');
-                    // Deep, firm masculine pitch (0.80 - 0.88)
-                    utterance.pitch = isKnownMale ? 0.88 : 0.74;
+                    utterance.pitch = isKnownMale ? 0.88 : 0.72;
                 } else {
-                    utterance.pitch = 0.74; // enforce deep masculine pitch
+                    utterance.pitch = 0.72;
                 }
 
-                utterance.rate = 1.0; // firm, clear, authoritative tempo
+                utterance.rate = 1.0;
                 utterance.volume = 1.0;
-
                 window.speechSynthesis.speak(utterance);
             } catch (e) {
-                console.warn("TTS speak error:", e);
+                console.warn("Fallback TTS error:", e);
             }
         }
 
@@ -1432,7 +1451,7 @@
                 playChimeNote(ctx, 783.99, now + 0.20, 0.65, 0.65);
                 playRadioSquelch(ctx, now + 0.65);
                 setTimeout(() => {
-                    speakAlertVoice("Suara monitor aktif bro!");
+                    playGentleMaleAudio('__test__', "Suara monitor aktif bro!");
                 }, 720);
                 return;
             }
@@ -1459,11 +1478,11 @@
             // 4. Firm, confident male voice speaks right after the radio click:
             setTimeout(() => {
                 if (!audioAlertEnabled) return;
-                let siteName = (incidentSummary && incidentSummary.site) ? incidentSummary.site : "";
-                let alertSentence = siteName 
+                const siteName = (incidentSummary && incidentSummary.site) ? incidentSummary.site : "";
+                const alertSentence = siteName 
                     ? `Bro, ada putus bro di site ${siteName}!` 
                     : `Bro, ada putus bro!`;
-                speakAlertVoice(alertSentence);
+                playGentleMaleAudio(siteName, alertSentence);
             }, 1020);
         }
 

@@ -1,10 +1,11 @@
 import os
+import re
 import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional, List
 from fastapi import FastAPI, Depends, Request, Form, HTTPException, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -1080,6 +1081,47 @@ def get_cached_nms_telemetry_payload(db: Session, max_age: float = 2.0):
     _cached_telemetry_payload = payload
     _cached_telemetry_time = now
     return payload
+
+@app.get("/api/audio/alert")
+async def get_audio_alert_voice(site: str = ""):
+    """Mengembalikan suara AI pria Indonesia (Microsoft Ardi Neural) yang bernada baritone, gentle, dan tegas"""
+    clean_site = re.sub(r'[^a-zA-Z0-9_\-\s]', '', site).strip()[:50]
+    static_audio_dir = os.path.join(BASE_DIR, "static", "audio")
+    
+    # 1. Cek jika site kosong -> gunakan default alert
+    if not clean_site:
+        default_file = os.path.join(static_audio_dir, "alert_default.mp3")
+        if os.path.exists(default_file):
+            return FileResponse(default_file, media_type="audio/mpeg")
+        sentence = "Bro, ada putus bro!"
+    else:
+        sentence = f"Bro, ada putus bro di site {clean_site}!"
+        
+    cache_dir = os.path.join(static_audio_dir, "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    site_slug = re.sub(r'[\s\W]+', '_', clean_site.lower()) if clean_site else "default"
+    cache_file = os.path.join(cache_dir, f"site_{site_slug}.mp3")
+    
+    if os.path.exists(cache_file):
+        return FileResponse(cache_file, media_type="audio/mpeg")
+        
+    # Generate on-demand dengan edge_tts jika belum ada di cache
+    try:
+        import edge_tts
+        # id-ID-ArdiNeural adalah suara resmi Microsoft AI cowok Indonesia berkarakter baritone, gentle, dan berwibawa
+        communicate = edge_tts.Communicate(sentence, "id-ID-ArdiNeural", pitch="-3Hz", rate="+0%")
+        await communicate.save(cache_file)
+        if os.path.exists(cache_file):
+            return FileResponse(cache_file, media_type="audio/mpeg")
+    except Exception as e:
+        logger.warning(f"Voice generation error for site '{clean_site}': {e}")
+        
+    default_file = os.path.join(static_audio_dir, "alert_default.mp3")
+    if os.path.exists(default_file):
+        return FileResponse(default_file, media_type="audio/mpeg")
+        
+    return JSONResponse(status_code=404, content={"error": "Audio not available"})
 
 @app.get("/noc", response_class=HTMLResponse)
 @app.get("/nms/wallboard", response_class=HTMLResponse)

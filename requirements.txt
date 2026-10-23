@@ -9,3 +9,4 @@ pydantic>=2.6.4
 requests>=2.31.0
 itsdangerous>=2.2.0
 pysnmp>=7.1.0
+edge-tts>=7.0.0
