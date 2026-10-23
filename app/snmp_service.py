@@ -376,11 +376,9 @@ def calculate_counter_rate(new_val: int, prev_val: int, delta_sec: float, is_64b
     
     rate_mbps = (diff_bytes * 8.0) / (delta_sec * 1_000_000.0)
     
-    # Batas kewajaran kecepatan (Mencegah lonjakan saat router baru reboot)
-    # Jika link speed diketahui (misal 1G, 10G, 40G), batasi max 2.5x link speed fisik
-    # Jika link speed tidak diketahui, batasi max 100 Gbps (100,000 Mbps)
-    max_threshold = (speed_mbps * 2.5) if (speed_mbps and speed_mbps > 0) else 100_000.0
-    if rate_mbps > max_threshold:
+    # Batas toleransi aman: Jika rate melebihi 100 Gbps (100,000 Mbps) akibat counter reset
+    # setelah router baru saja reboot, reset rate ke 0.0 daripada menampilkan data tidak wajar.
+    if rate_mbps > 100_000.0 or rate_mbps < 0.0:
         return 0.0
     
     return round(rate_mbps, 2)
@@ -424,11 +422,14 @@ def get_device_backbone_interfaces(interfaces):
     Mengambil interface port Backbone / Uplink utama pada router site (Non-BGP).
     Mencegah penggandaan agregat trafik akibat perutean paket antara WAN dan LAN.
 
-    Prioritas pemilihan:
-    1. Interface fisik yang memiliki alias/komentar eksplisit mengandung keyword:
-       ('backbone', 'uplink', 'to-core', 'ke-core', 'ke core', 'link-core', 'link core', 'to core', 'trunk')
-    2. Interface optik fisik (SFP / SFP28 / SFP+ / 10G / 25G / 40G / 100G) dengan throughput tertinggi
-    3. Interface fisik tembaga (ethernet) dengan throughput tertinggi
+    Prioritas pemilihan cerdas:
+    1. Interface fisik yang memiliki alias/komentar eksplisit mengandung keyword backbone/uplink.
+    2. Interface optik fisik (SFP / SFP28 / SFP+ / 10G / 25G / 40G / 100G):
+       - Memprioritaskan port yang statusnya UP (is_up == True)
+       - Mengurutkan berdasarkan total throughput live (rx_rate + tx_rate)
+       - Jika live rate sama (misal baru reboot/0 Mbps), urutkan berdasarkan akumulasi bytes (rx_bytes + tx_bytes)
+         sehingga port aktif (seperti sfp28-2) selalu terpilih dibanding port kosong/down (seperti sfp28-1).
+    3. Interface fisik tembaga (ethernet) dengan prioritas UP dan throughput tertinggi.
     """
     if not interfaces:
         return []
@@ -449,9 +450,10 @@ def get_device_backbone_interfaces(interfaces):
         if any(kw in al or kw in nm for kw in bb_keywords):
             tagged_bb.append(i)
     if tagged_bb:
-        return tagged_bb
+        up_tagged = [i for i in tagged_bb if getattr(i, 'is_up', False)]
+        return up_tagged if up_tagged else tagged_bb
 
-    # 2. Prioritas 2: Interface Optik SFP / SFP28 / SFP+ (di CCR-2004 / CCR-1009 link backbone selalu lewat SFP)
+    # 2. Prioritas 2: Interface Optik SFP / SFP28 / SFP+
     sfp_candidates = []
     for i in phys_candidates:
         nm = (getattr(i, 'name', '') or '').lower()
@@ -462,15 +464,23 @@ def get_device_backbone_interfaces(interfaces):
     if sfp_candidates:
         sfp_sorted = sorted(
             sfp_candidates,
-            key=lambda x: (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+            key=lambda x: (
+                1 if getattr(x, 'is_up', False) else 0,
+                (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+                (getattr(x, 'rx_bytes', 0) or 0) + (getattr(x, 'tx_bytes', 0) or 0)
+            ),
             reverse=True
         )
         return [sfp_sorted[0]]
 
-    # 3. Prioritas 3: Interface fisik tembaga dengan throughput tertinggi
+    # 3. Prioritas 3: Interface fisik tembaga
     phys_sorted = sorted(
         phys_candidates,
-        key=lambda x: (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+        key=lambda x: (
+            1 if getattr(x, 'is_up', False) else 0,
+            (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+            (getattr(x, 'rx_bytes', 0) or 0) + (getattr(x, 'tx_bytes', 0) or 0)
+        ),
         reverse=True
     )
     return [phys_sorted[0]] if phys_sorted else []
@@ -1105,8 +1115,8 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
                         if prev_time:
                             delta_sec = (now_dt - prev_time).total_seconds()
                             if 0.1 <= delta_sec <= 600.0:
-                                rx_rate = calculate_counter_rate(new_rx, prev_rx, delta_sec, has_hc, speed_mbps_val)
-                                tx_rate = calculate_counter_rate(new_tx, prev_tx, delta_sec, has_hc, speed_mbps_val)
+                                rx_rate = calculate_counter_rate(new_rx, prev_rx, delta_sec, has_hc)
+                                tx_rate = calculate_counter_rate(new_tx, prev_tx, delta_sec, has_hc)
 
                         iface_obj.name = if_name
                         iface_obj.alias = alias

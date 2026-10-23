@@ -564,8 +564,7 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
             top_item = t_ifaces[0]
             top_rate = (top_item.rx_rate_mbps or 0.0) + (top_item.tx_rate_mbps or 0.0)
             top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
-            alias_part = f" • {top_item.alias}" if top_item.alias and top_item.alias != "-" else ""
-            top_iface_str = f"Backbone: {top_item.name}{alias_part} ({top_rate_label})"
+            top_iface_str = f"{top_item.name} ({top_rate_label})"
 
         rx_bit_str, rx_byte_str = format_speed_str(total_rx)
         tx_bit_str, tx_byte_str = format_speed_str(total_tx)
@@ -696,8 +695,7 @@ def get_nms_telemetry_payload(db: Session):
             top_item = t_ifaces[0]
             top_rate = (top_item.rx_rate_mbps or 0.0) + (top_item.tx_rate_mbps or 0.0)
             top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
-            alias_part = f" • {top_item.alias}" if top_item.alias and top_item.alias != "-" else ""
-            top_iface_str = f"Backbone: {top_item.name}{alias_part} ({top_rate_label})"
+            top_iface_str = f"{top_item.name} ({top_rate_label})"
 
         if d.interfaces:
             for iface in d.interfaces:
