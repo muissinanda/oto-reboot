@@ -419,6 +419,62 @@ def get_device_physical_interfaces(interfaces):
         return phys
     return [i for i in interfaces if (getattr(i, 'name', '') or '').lower() not in ("lo", "loopback", "null0") and "." not in (getattr(i, 'name', '') or '')]
 
+def get_device_backbone_interfaces(interfaces):
+    """
+    Mengambil interface port Backbone / Uplink utama pada router site (Non-BGP).
+    Mencegah penggandaan agregat trafik akibat perutean paket antara WAN dan LAN.
+
+    Prioritas pemilihan:
+    1. Interface fisik yang memiliki alias/komentar eksplisit mengandung keyword:
+       ('backbone', 'uplink', 'to-core', 'ke-core', 'ke core', 'link-core', 'link core', 'to core', 'trunk')
+    2. Interface optik fisik (SFP / SFP28 / SFP+ / 10G / 25G / 40G / 100G) dengan throughput tertinggi
+    3. Interface fisik tembaga (ethernet) dengan throughput tertinggi
+    """
+    if not interfaces:
+        return []
+
+    phys_candidates = [i for i in interfaces if is_physical_interface(getattr(i, 'name', '') or '')]
+    if not phys_candidates:
+        phys_candidates = [i for i in interfaces if (getattr(i, 'name', '') or '').lower() not in ("lo", "loopback", "null0") and "." not in (getattr(i, 'name', '') or '')]
+
+    if not phys_candidates:
+        return []
+
+    # 1. Prioritas 1: Interface dengan alias atau nama bertanda backbone/uplink
+    bb_keywords = ("backbone", "uplink", "to-core", "ke-core", "ke core", "link-core", "link core", "to core")
+    tagged_bb = []
+    for i in phys_candidates:
+        al = (getattr(i, 'alias', '') or '').lower()
+        nm = (getattr(i, 'name', '') or '').lower()
+        if any(kw in al or kw in nm for kw in bb_keywords):
+            tagged_bb.append(i)
+    if tagged_bb:
+        return tagged_bb
+
+    # 2. Prioritas 2: Interface Optik SFP / SFP28 / SFP+ (di CCR-2004 / CCR-1009 link backbone selalu lewat SFP)
+    sfp_candidates = []
+    for i in phys_candidates:
+        nm = (getattr(i, 'name', '') or '').lower()
+        is_sfp = getattr(i, 'is_sfp', False)
+        if is_sfp or any(k in nm for k in ["sfp", "xe-", "et-", "10g", "25g", "40g", "100g"]):
+            sfp_candidates.append(i)
+
+    if sfp_candidates:
+        sfp_sorted = sorted(
+            sfp_candidates,
+            key=lambda x: (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+            reverse=True
+        )
+        return [sfp_sorted[0]]
+
+    # 3. Prioritas 3: Interface fisik tembaga dengan throughput tertinggi
+    phys_sorted = sorted(
+        phys_candidates,
+        key=lambda x: (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+        reverse=True
+    )
+    return [phys_sorted[0]] if phys_sorted else []
+
 def classify_interface_type(name: str, if_type_num: int = 0) -> str:
     """Klasifikasi tipe interface: ethernet, vlan, backbone, bridge, wireless, other"""
     n = name.lower()
@@ -1342,9 +1398,10 @@ async def poll_single_device(device_id: int) -> Tuple[bool, str]:
 
         # Rekam snapshot traffic ke tabel histori (NetworkTrafficHistory)
         try:
-            phys_ifaces = get_device_physical_interfaces(dev.interfaces)
-            total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in phys_ifaces)
-            total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in phys_ifaces)
+            bb_ifaces = get_device_backbone_interfaces(dev.interfaces)
+            t_ifaces = bb_ifaces if bb_ifaces else get_device_physical_interfaces(dev.interfaces)
+            total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
+            total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
             hist = NetworkTrafficHistory(
                 device_id=dev.id,
                 site=dev.site or "Fasilkom",

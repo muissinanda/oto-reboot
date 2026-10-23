@@ -27,7 +27,7 @@ from app.ssh_worker import execute_ssh_reboot, reboot_aps_batch
 from app.monitor import run_monitor_cycle
 from app.snmp_service import (
     poll_single_device, test_snmp_connection, run_nms_poll_cycle,
-    get_device_physical_interfaces, is_physical_interface
+    get_device_physical_interfaces, get_device_backbone_interfaces, is_physical_interface
 )
 
 @asynccontextmanager
@@ -549,24 +549,23 @@ async def page_nms(request: Request, db: Session = Depends(get_db)):
         return bit_str, byte_str
 
     for d in devices:
-        # Filter interface fisik agar 100% akurat tanpa double-counting dengan software bridge / vlan
-        t_ifaces = get_device_physical_interfaces(d.interfaces)
+        # Ambil murni dari port Backbone / Uplink utama router (mencegah pembengkakan internal antar port lokal)
+        bb_ifaces = get_device_backbone_interfaces(d.interfaces)
+        t_ifaces = bb_ifaces if bb_ifaces else get_device_physical_interfaces(d.interfaces)
 
         total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
         total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
         total_bw = total_rx + total_tx
         total_network_traffic_mbps += total_bw
 
-        # Cari interface dengan trafik tertinggi
+        # Label port backbone
         top_iface_str = None
-        if d.interfaces:
-            sorted_ifaces = sorted(d.interfaces, key=lambda x: (x.rx_rate_mbps or 0) + (x.tx_rate_mbps or 0), reverse=True)
-            if sorted_ifaces:
-                top_item = sorted_ifaces[0]
-                top_rate = (top_item.rx_rate_mbps or 0) + (top_item.tx_rate_mbps or 0)
-                if top_rate > 0:
-                    top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
-                    top_iface_str = f"{top_item.name} ({top_rate_label})"
+        if t_ifaces:
+            top_item = t_ifaces[0]
+            top_rate = (top_item.rx_rate_mbps or 0.0) + (top_item.tx_rate_mbps or 0.0)
+            top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
+            alias_part = f" • {top_item.alias}" if top_item.alias and top_item.alias != "-" else ""
+            top_iface_str = f"Backbone: {top_item.name}{alias_part} ({top_rate_label})"
 
         rx_bit_str, rx_byte_str = format_speed_str(total_rx)
         tx_bit_str, tx_byte_str = format_speed_str(total_tx)
@@ -679,8 +678,9 @@ def get_nms_telemetry_payload(db: Session):
         return bit_str, byte_str
 
     for d in devices:
-        # Filter interface fisik agar 100% akurat tanpa double-counting dengan software bridge / vlan
-        t_ifaces = get_device_physical_interfaces(d.interfaces)
+        # Ambil murni dari port Backbone / Uplink utama router (mencegah pembengkakan internal antar port lokal)
+        bb_ifaces = get_device_backbone_interfaces(d.interfaces)
+        t_ifaces = bb_ifaces if bb_ifaces else get_device_physical_interfaces(d.interfaces)
 
         total_rx = sum((iface.rx_rate_mbps or 0.0) for iface in t_ifaces)
         total_tx = sum((iface.tx_rate_mbps or 0.0) for iface in t_ifaces)
@@ -690,16 +690,16 @@ def get_nms_telemetry_payload(db: Session):
         total_network_rx_mbps += total_rx
         total_network_tx_mbps += total_tx
         
+        # Label port backbone
         top_iface_str = None
-        if d.interfaces:
-            sorted_ifaces = sorted(d.interfaces, key=lambda x: (x.rx_rate_mbps or 0) + (x.tx_rate_mbps or 0), reverse=True)
-            if sorted_ifaces:
-                top_item = sorted_ifaces[0]
-                top_rate = (top_item.rx_rate_mbps or 0) + (top_item.tx_rate_mbps or 0)
-                if top_rate > 0:
-                    top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
-                    top_iface_str = f"{top_item.name} ({top_rate_label})"
+        if t_ifaces:
+            top_item = t_ifaces[0]
+            top_rate = (top_item.rx_rate_mbps or 0.0) + (top_item.tx_rate_mbps or 0.0)
+            top_rate_label = f"{top_rate/1000.0:.2f} Gbps" if top_rate >= 1000 else f"{top_rate:.1f} Mbps"
+            alias_part = f" • {top_item.alias}" if top_item.alias and top_item.alias != "-" else ""
+            top_iface_str = f"Backbone: {top_item.name}{alias_part} ({top_rate_label})"
 
+        if d.interfaces:
             for iface in d.interfaces:
                 rate = (iface.rx_rate_mbps or 0.0) + (iface.tx_rate_mbps or 0.0)
                 all_interfaces.append({
@@ -2025,10 +2025,10 @@ def get_isp_rates_from_db(db: Session):
                     linknet_rx = max(linknet_rx, i.rx_rate_mbps or 0.0)
                     linknet_tx = max(linknet_tx, i.tx_rate_mbps or 0.0)
 
-    # 3. Proporsional baseline realistis jika belum terkonfigurasi (hanya interface fisik)
+    # 3. Proporsional baseline realistis jika belum terkonfigurasi (hanya port backbone)
     if telkom_rx == 0.0 and linknet_rx == 0.0:
-        total_fleet_rx = sum(sum((i.rx_rate_mbps or 0.0) for i in get_device_physical_interfaces(d.interfaces)) for d in devices)
-        total_fleet_tx = sum(sum((i.tx_rate_mbps or 0.0) for i in get_device_physical_interfaces(d.interfaces)) for d in devices)
+        total_fleet_rx = sum(sum((i.rx_rate_mbps or 0.0) for i in get_device_backbone_interfaces(d.interfaces)) for d in devices)
+        total_fleet_tx = sum(sum((i.tx_rate_mbps or 0.0) for i in get_device_backbone_interfaces(d.interfaces)) for d in devices)
         if total_fleet_rx > 0:
             telkom_rx = total_fleet_rx * 0.58
             telkom_tx = total_fleet_tx * 0.58
