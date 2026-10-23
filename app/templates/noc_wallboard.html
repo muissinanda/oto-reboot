@@ -1316,7 +1316,80 @@
             }
         }
 
-        // Voice Alert (Text to Speech - Bahasa Indonesia)
+        // Rich Metallic Acoustic Bell Chime (Additive Synthesis with Non-Harmonic Overtones)
+        function playChimeNote(ctx, freq, startTime, duration = 0.5, vol = 0.4) {
+            try {
+                const partials = [
+                    { f: freq * 1.0, g: vol * 0.70, d: duration },
+                    { f: freq * 2.0, g: vol * 0.35, d: duration * 0.7 },
+                    { f: freq * 3.01, g: vol * 0.20, d: duration * 0.5 },
+                    { f: freq * 4.15, g: vol * 0.10, d: duration * 0.3 }
+                ];
+                
+                partials.forEach(p => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(p.f, startTime);
+                    
+                    gain.gain.setValueAtTime(0.0001, startTime);
+                    gain.gain.linearRampToValueAtTime(p.g, startTime + 0.008);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + p.d);
+                    
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + p.d);
+                });
+            } catch(e) {}
+        }
+
+        // Realistic Tactical Radio PTT Mic Click & Squelch
+        function playRadioSquelch(ctx, startTime) {
+            try {
+                const bufferSize = Math.floor(ctx.sampleRate * 0.04);
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+                }
+                const noise = ctx.createBufferSource();
+                noise.buffer = buffer;
+                const gain = ctx.createGain();
+                gain.gain.setValueAtTime(0.14, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.04);
+                noise.connect(gain);
+                gain.connect(ctx.destination);
+                noise.start(startTime);
+            } catch(e) {}
+        }
+
+        // Natural Indonesian Male Voice Selector
+        function getFirmMaleVoice() {
+            if (!('speechSynthesis' in window)) return null;
+            const voices = window.speechSynthesis.getVoices();
+            if (!voices || voices.length === 0) return null;
+
+            // 1. Prioritize Indonesian male voices (Ardi, Andika, Male, Pria)
+            const idMale = voices.find(v => (v.lang === 'id-ID' || v.lang.startsWith('id')) && 
+                (v.name.toLowerCase().includes('ardi') || 
+                 v.name.toLowerCase().includes('andika') || 
+                 v.name.toLowerCase().includes('male') || 
+                 v.name.toLowerCase().includes('pria')));
+            if (idMale) return idMale;
+
+            // 2. Any other Indonesian voice
+            const anyId = voices.find(v => v.lang === 'id-ID' || v.lang.startsWith('id'));
+            if (anyId) return anyId;
+
+            // 3. Fallback to English/multilingual male voice
+            const anyMale = voices.find(v => v.name.toLowerCase().includes('male') || 
+                                             v.name.toLowerCase().includes('david') || 
+                                             v.name.toLowerCase().includes('guy'));
+            return anyMale || null;
+        }
+
+        // Voice Alert (Firm Male Voice - Bahasa Indonesia)
         function speakAlertVoice(text) {
             if (!('speechSynthesis' in window) || !window.speechSynthesis) return;
             try {
@@ -1324,16 +1397,20 @@
 
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = "id-ID";
-                utterance.rate = 1.08;
-                utterance.pitch = 1.05;
-                utterance.volume = 1.0;
-
-                const voices = window.speechSynthesis.getVoices();
-                if (voices && voices.length > 0) {
-                    const idVoice = voices.find(v => (v.lang === 'id-ID' || v.lang.startsWith('id')) && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online')))
-                                 || voices.find(v => v.lang === 'id-ID' || v.lang.startsWith('id'));
-                    if (idVoice) utterance.voice = idVoice;
+                
+                const maleVoice = getFirmMaleVoice();
+                if (maleVoice) {
+                    utterance.voice = maleVoice;
+                    const isKnownMale = maleVoice.name.toLowerCase().includes('ardi') || 
+                                        maleVoice.name.toLowerCase().includes('andika');
+                    // Deep, firm masculine pitch (0.80 - 0.88)
+                    utterance.pitch = isKnownMale ? 0.88 : 0.74;
+                } else {
+                    utterance.pitch = 0.74; // enforce deep masculine pitch
                 }
+
+                utterance.rate = 1.0; // firm, clear, authoritative tempo
+                utterance.volume = 1.0;
 
                 window.speechSynthesis.speak(utterance);
             } catch (e) {
@@ -1350,25 +1427,27 @@
             const now = ctx.currentTime;
 
             if (toneType === 'test') {
-                // Futuristic activation sci-fi chime
-                playCyberSweep(ctx, 523, 784, now + 0.00, 0.12, 0.35, 'triangle');
-                playCyberSweep(ctx, 784, 1174, now + 0.12, 0.20, 0.40, 'sine');
+                // Tactical Intercom Confirmation Chime (C5 -> G5)
+                playChimeNote(ctx, 523.25, now + 0.00, 0.45, 0.55);
+                playChimeNote(ctx, 783.99, now + 0.20, 0.65, 0.65);
+                playRadioSquelch(ctx, now + 0.65);
                 setTimeout(() => {
                     speakAlertVoice("Suara monitor aktif bro!");
-                }, 350);
+                }, 720);
                 return;
             }
 
-            // High-Tech Cyber Sonar Alarm (Tactical Drop & Pulse)
-            // 1. Sub-bass tactical punch
-            playCyberSweep(ctx, 160, 45, now + 0.00, 0.22, 0.75, 'sine');
-            // 2. High-tech laser sonar chirp 1 (descending sweep)
-            playCyberSweep(ctx, 1500, 750, now + 0.04, 0.14, 0.65, 'triangle');
-            // 3. Urgent sonar chirp 2 (higher, cutting through)
-            playCyberSweep(ctx, 1800, 900, now + 0.22, 0.14, 0.70, 'triangle');
-            // 4. Resonant futuristic warning chord
-            playCyberSweep(ctx, 1200, 1050, now + 0.40, 0.35, 0.55, 'sine');
-            playCyberSweep(ctx, 1600, 1400, now + 0.40, 0.35, 0.50, 'sine');
+            // Cinematic Tactical Command Alert (Heavy Sub Bass + Authoritative 3-Tone Intercom)
+            // 1. Deep Sub-Bass Impact (130Hz -> 38Hz)
+            playCyberSweep(ctx, 130, 38, now + 0.00, 0.35, 0.85, 'sine');
+            
+            // 2. Authoritative 3-Tone High-End Tactical Chime (A4 -> C#5 -> E5)
+            playChimeNote(ctx, 440.00, now + 0.03, 0.45, 0.60);
+            playChimeNote(ctx, 554.37, now + 0.24, 0.50, 0.65);
+            playChimeNote(ctx, 659.25, now + 0.46, 0.70, 0.75);
+
+            // 3. Tactical Radio Mic Click (PTT transmission open)
+            playRadioSquelch(ctx, now + 0.95);
 
             // Flash audio button visually to indicate alarm is sounding
             const audioBtn = document.getElementById('btnAudioToggle');
@@ -1377,7 +1456,7 @@
                 setTimeout(() => audioBtn.classList.remove('btn-alarm-flash'), 1200);
             }
 
-            // Cool Voice Alert: "Bro, ada putus bro di site [nama site]!"
+            // 4. Firm, confident male voice speaks right after the radio click:
             setTimeout(() => {
                 if (!audioAlertEnabled) return;
                 let siteName = (incidentSummary && incidentSummary.site) ? incidentSummary.site : "";
@@ -1385,7 +1464,7 @@
                     ? `Bro, ada putus bro di site ${siteName}!` 
                     : `Bro, ada putus bro!`;
                 speakAlertVoice(alertSentence);
-            }, 750);
+            }, 1020);
         }
 
         function updateAudioToggleUI() {
