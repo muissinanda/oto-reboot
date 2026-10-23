@@ -420,16 +420,17 @@ def get_device_physical_interfaces(interfaces):
 def get_device_backbone_interfaces(interfaces):
     """
     Mengambil interface port Backbone / Uplink utama pada router site (Non-BGP).
-    Mencegah penggandaan agregat trafik akibat perutean paket antara WAN dan LAN.
+    Mencegah penggandaan throughput router akibat routing paket antara WAN dan LAN.
 
-    Prioritas pemilihan cerdas:
-    1. Interface fisik yang memiliki alias/komentar eksplisit mengandung keyword backbone/uplink.
-    2. Interface optik fisik (SFP / SFP28 / SFP+ / 10G / 25G / 40G / 100G):
-       - Memprioritaskan port yang statusnya UP (is_up == True)
-       - Mengurutkan berdasarkan total throughput live (rx_rate + tx_rate)
-       - Jika live rate sama (misal baru reboot/0 Mbps), urutkan berdasarkan akumulasi bytes (rx_bytes + tx_bytes)
-         sehingga port aktif (seperti sfp28-2) selalu terpilih dibanding port kosong/down (seperti sfp28-1).
-    3. Interface fisik tembaga (ethernet) dengan prioritas UP dan throughput tertinggi.
+    Logika seleksi akurat 100%:
+    1. Filter hanya interface fisik (bukan loopback, bukan bridge, bukan subinterface vlan).
+    2. Cari interface SFP / optik fisik (sfp, sfp28, sfpplus, xe-, et-, 10g, 25g, 40g, 100g):
+       - Utamakan interface SFP yang memiliki throughput live aktif (> 0.05 Mbps).
+       - Jika ada beberapa SFP aktif (misal dual uplink), pilih yang throughputnya tertinggi.
+    3. Jika tidak ada SFP aktif, cek interface fisik (tembaga/ethernet) yang memiliki throughput aktif.
+    4. Jika saat ini semua rate 0.0 (misal pasca-restart server atau router baru polling):
+       - Pilih interface SFP yang berstatus UP dan memiliki akumulasi total byte terbanyak (seperti sfp28-2).
+       - Port down / kosong (seperti sfp28-1 yang 0 bytes) tidak akan pernah terpilih.
     """
     if not interfaces:
         return []
@@ -441,19 +442,7 @@ def get_device_backbone_interfaces(interfaces):
     if not phys_candidates:
         return []
 
-    # 1. Prioritas 1: Interface dengan alias atau nama bertanda backbone/uplink
-    bb_keywords = ("backbone", "uplink", "to-core", "ke-core", "ke core", "link-core", "link core", "to core")
-    tagged_bb = []
-    for i in phys_candidates:
-        al = (getattr(i, 'alias', '') or '').lower()
-        nm = (getattr(i, 'name', '') or '').lower()
-        if any(kw in al or kw in nm for kw in bb_keywords):
-            tagged_bb.append(i)
-    if tagged_bb:
-        up_tagged = [i for i in tagged_bb if getattr(i, 'is_up', False)]
-        return up_tagged if up_tagged else tagged_bb
-
-    # 2. Prioritas 2: Interface Optik SFP / SFP28 / SFP+
+    # Filter SFP / Fiber optics
     sfp_candidates = []
     for i in phys_candidates:
         nm = (getattr(i, 'name', '') or '').lower()
@@ -461,29 +450,51 @@ def get_device_backbone_interfaces(interfaces):
         if is_sfp or any(k in nm for k in ["sfp", "xe-", "et-", "10g", "25g", "40g", "100g"]):
             sfp_candidates.append(i)
 
+    # Prioritas 1: SFP dengan throughput aktif (> 0.05 Mbps)
+    active_sfp = [
+        i for i in sfp_candidates
+        if ((getattr(i, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(i, 'tx_rate_mbps', 0.0) or 0.0)) > 0.05
+    ]
+    if active_sfp:
+        active_sfp.sort(
+            key=lambda x: (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+            reverse=True
+        )
+        return [active_sfp[0]]
+
+    # Prioritas 2: Interface fisik apapun (tembaga/ethernet) dengan throughput aktif
+    active_phys = [
+        i for i in phys_candidates
+        if ((getattr(i, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(i, 'tx_rate_mbps', 0.0) or 0.0)) > 0.05
+    ]
+    if active_phys:
+        active_phys.sort(
+            key=lambda x: (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
+            reverse=True
+        )
+        return [active_phys[0]]
+
+    # Prioritas 3 (Fallback saat polling baru dimulai / rate masih 0):
+    # Pilih SFP yang UP dan memiliki akumulasi total byte terbanyak (menghindari port kosong seperti sfp28-1)
     if sfp_candidates:
-        sfp_sorted = sorted(
-            sfp_candidates,
+        sfp_candidates.sort(
             key=lambda x: (
                 1 if getattr(x, 'is_up', False) else 0,
-                (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
                 (getattr(x, 'rx_bytes', 0) or 0) + (getattr(x, 'tx_bytes', 0) or 0)
             ),
             reverse=True
         )
-        return [sfp_sorted[0]]
+        return [sfp_candidates[0]]
 
-    # 3. Prioritas 3: Interface fisik tembaga
-    phys_sorted = sorted(
-        phys_candidates,
+    # Prioritas 4 (Fallback tembaga UP dengan akumulasi byte terbanyak)
+    phys_candidates.sort(
         key=lambda x: (
             1 if getattr(x, 'is_up', False) else 0,
-            (getattr(x, 'rx_rate_mbps', 0.0) or 0.0) + (getattr(x, 'tx_rate_mbps', 0.0) or 0.0),
             (getattr(x, 'rx_bytes', 0) or 0) + (getattr(x, 'tx_bytes', 0) or 0)
         ),
         reverse=True
     )
-    return [phys_sorted[0]] if phys_sorted else []
+    return [phys_candidates[0]] if phys_candidates else []
 
 def classify_interface_type(name: str, if_type_num: int = 0) -> str:
     """Klasifikasi tipe interface: ethernet, vlan, backbone, bridge, wireless, other"""
