@@ -6,6 +6,7 @@ from app.database import SessionLocal, RebootSchedule, AccessPoint, get_setting,
 from app.ssh_worker import reboot_aps_batch
 from app.monitor import run_monitor_cycle
 from app.snmp_service import run_nms_poll_cycle
+from app.services.latency_service import update_services_health_background
 
 scheduler = AsyncIOScheduler()
 
@@ -132,6 +133,15 @@ def setup_scheduler():
             trigger=IntervalTrigger(seconds=60),
             id="nms_snmp_monitor_job",
             name="SNMP Traffic & Health Poller",
+            replace_existing=True
+        )
+
+        # Job 4: Latensi Global & Health Layanan UNEJ (setiap 30 detik di background)
+        scheduler.add_job(
+            update_services_health_background,
+            trigger=IntervalTrigger(seconds=30),
+            id="services_health_job",
+            name="Global Latency & UNEJ Services Poller",
             replace_existing=True
         )
 

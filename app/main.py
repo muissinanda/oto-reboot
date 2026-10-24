@@ -29,7 +29,7 @@ from app.snmp_service import (
     poll_single_device, test_snmp_connection, run_nms_poll_cycle,
     get_device_physical_interfaces, get_device_backbone_interfaces, is_physical_interface
 )
-from app.services.latency_service import get_services_health_payload
+from app.services.latency_service import get_services_health_payload, update_services_health_background
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,9 +37,10 @@ async def lifespan(app: FastAPI):
     init_db()
     seed_initial_aps()
     setup_scheduler()
-    # Trigger 1x scan status & SNMP poll di awal
+    # Trigger 1x scan status & SNMP poll di awal (non-blocking background tasks)
     asyncio.create_task(asyncio.to_thread(run_monitor_cycle))
     asyncio.create_task(asyncio.to_thread(run_nms_poll_cycle))
+    asyncio.create_task(asyncio.to_thread(update_services_health_background))
     yield
     # Shutdown
 

@@ -279,52 +279,47 @@
         }
 
         /* ===================================================
-           DUAL SLIDE 3D ROTATION & TRANSITION STYLES (60 FPS)
+           DUAL SLIDE ULTRA-LIGHT 60FPS TV TRANSITION STYLES
            =================================================== */
         .noc-viewport-wrapper {
             position: relative;
             width: 100%;
             min-height: calc(100vh - 65px);
             overflow-x: hidden;
-            perspective: 1400px;
+            contain: layout style;
         }
 
         .noc-slide-page {
             width: 100%;
             min-height: 100%;
-            transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.7s ease;
-            will-change: transform, opacity;
-            transform-style: preserve-3d;
-            backface-visibility: hidden;
+            transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+            contain: content;
         }
 
         .noc-slide-page.slide-active {
             opacity: 1;
-            transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);
+            transform: translateX(0);
             position: relative;
             pointer-events: auto;
-            filter: blur(0px);
             display: block;
         }
 
         .noc-slide-page.slide-exit-left {
             opacity: 0;
-            transform: translate3d(-70px, 0, -100px) rotateY(-6deg) scale(0.96);
+            transform: translateX(-24px);
             position: absolute;
             top: 0;
             left: 0;
             pointer-events: none;
-            filter: blur(2px);
         }
 
         .noc-slide-page.slide-exit-right {
             opacity: 0;
-            transform: translate3d(70px, 0, -100px) rotateY(6deg) scale(0.96);
+            transform: translateX(24px);
             position: absolute;
             top: 0;
             left: 0;
             pointer-events: none;
-            filter: blur(2px);
         }
 
         .noc-slide-page.slide-hidden {
@@ -1541,7 +1536,7 @@
             if (!slide1El || !slide2El) return;
 
             if (targetSlide === 2) {
-                // Transisi 3D: Slide 1 keluar ke kiri, Slide 2 masuk dari kanan
+                // Transisi Ringan: Slide 1 keluar ke kiri, Slide 2 masuk dari kanan
                 slide1El.classList.remove('slide-active');
                 slide1El.classList.add('slide-exit-left');
 
@@ -1552,7 +1547,7 @@
                 setTimeout(() => {
                     slide1El.classList.add('slide-hidden');
                     slide1El.classList.remove('slide-exit-left');
-                }, 750);
+                }, 360);
 
                 if (btn1) btn1.classList.remove('active');
                 if (btn2) btn2.classList.add('active', 'slide-2-btn');
@@ -1561,7 +1556,7 @@
                 currentSlide = 2;
                 fetchServicesHealth();
             } else {
-                // Transisi 3D: Slide 2 keluar ke kanan, Slide 1 masuk dari kiri
+                // Transisi Ringan: Slide 2 keluar ke kanan, Slide 1 masuk dari kiri
                 slide2El.classList.remove('slide-active');
                 slide2El.classList.add('slide-exit-right');
 
@@ -1572,7 +1567,7 @@
                 setTimeout(() => {
                     slide2El.classList.add('slide-hidden');
                     slide2El.classList.remove('slide-exit-right');
-                }, 750);
+                }, 360);
 
                 if (btn2) btn2.classList.remove('active', 'slide-2-btn');
                 if (btn1) btn1.classList.add('active');
@@ -2846,10 +2841,11 @@
             }
         }
 
-        // Countdown timer loop (cached DOM elements)
+        // Unified 1-Second Master Loop (Ultra-Lightweight on TV CPU)
         const syncTimerTextEl = document.getElementById('syncTimerText');
         const syncRingEl = document.getElementById('syncRingProgress');
         setInterval(() => {
+            // 1. Telemetry Sync Timer (5s)
             countdown--;
             if (countdown <= 0) {
                 countdown = REFRESH_INTERVAL_SEC;
@@ -2860,25 +2856,23 @@
                 const offset = (countdown / REFRESH_INTERVAL_SEC) * 60;
                 syncRingEl.style.strokeDashoffset = 60 - offset;
             }
-        }, 1000);
 
-        // Slide 60-Second Auto-Rotation Loop (1 Menit Bergantian)
-        setInterval(() => {
-            if (isSlidePaused) return;
-
-            slideCountdown--;
-            if (slideCountdown <= 0) {
-                const nextSlide = (currentSlide === 1) ? 2 : 1;
-                switchSlide(nextSlide);
-            } else {
-                updateSlideTimerUI();
+            // 2. Slide 60-Second Auto-Rotation Loop
+            if (!isSlidePaused) {
+                slideCountdown--;
+                if (slideCountdown <= 0) {
+                    const nextSlide = (currentSlide === 1) ? 2 : 1;
+                    switchSlide(nextSlide);
+                } else {
+                    updateSlideTimerUI();
+                }
             }
         }, 1000);
 
-        // Periodic Background Telemetry Fetch untuk Latensi Global & Aplikasi UNEJ (10s)
+        // Background Telemetry Fetch untuk Latensi Global & Aplikasi UNEJ (Setiap 30 detik, Zero-Lag)
         setInterval(() => {
             fetchServicesHealth();
-        }, 10000);
+        }, 30000);
 
         // Initialize Alert banner toggle state on load
         updateAlertToggleUI(lastKnownIncidentCount);
