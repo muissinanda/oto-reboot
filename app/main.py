@@ -29,6 +29,7 @@ from app.snmp_service import (
     poll_single_device, test_snmp_connection, run_nms_poll_cycle,
     get_device_physical_interfaces, get_device_backbone_interfaces, is_physical_interface
 )
+from app.services.latency_service import get_services_health_payload
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1133,7 +1134,8 @@ async def page_noc_wallboard(request: Request, db: Session = Depends(get_db)):
             "top_non_bgp_devices": telemetry.get("top_non_bgp_devices", []),
             "top_interfaces": telemetry["top_interfaces"],
             "incidents": telemetry.get("incidents", []),
-            "sites": telemetry["sites"]
+            "sites": telemetry["sites"],
+            "services_health": get_services_health_payload()
         }
     )
 
@@ -1971,6 +1973,11 @@ async def api_get_asn_details(asn: int, request: Request, db: Session = Depends(
 async def api_public_telemetry(db: Session = Depends(get_db)):
     """Endpoint telemetri live publik (tanpa login) untuk Wallboard NOC"""
     return get_nms_telemetry_payload(db)
+
+@app.get("/api/nms/public/services-health")
+async def api_public_services_health():
+    """Endpoint telemetri live latensi global (Google, Cloudflare) & aplikasi UNEJ untuk Slide 2 Wallboard NOC"""
+    return get_services_health_payload()
 
 _cached_history = {}
 _cached_history_time = {}

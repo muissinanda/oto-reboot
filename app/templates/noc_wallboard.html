@@ -277,6 +277,166 @@
         .btn-alarm-flash {
             animation: alarm-pulse 0.4s ease-in-out 3;
         }
+
+        /* ===================================================
+           DUAL SLIDE 3D ROTATION & TRANSITION STYLES (60 FPS)
+           =================================================== */
+        .noc-viewport-wrapper {
+            position: relative;
+            width: 100%;
+            min-height: calc(100vh - 65px);
+            overflow-x: hidden;
+            perspective: 1400px;
+        }
+
+        .noc-slide-page {
+            width: 100%;
+            min-height: 100%;
+            transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.7s ease;
+            will-change: transform, opacity;
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+        }
+
+        .noc-slide-page.slide-active {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1) rotateY(0deg);
+            position: relative;
+            pointer-events: auto;
+            filter: blur(0px);
+            display: block;
+        }
+
+        .noc-slide-page.slide-exit-left {
+            opacity: 0;
+            transform: translate3d(-70px, 0, -100px) rotateY(-6deg) scale(0.96);
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            filter: blur(2px);
+        }
+
+        .noc-slide-page.slide-exit-right {
+            opacity: 0;
+            transform: translate3d(70px, 0, -100px) rotateY(6deg) scale(0.96);
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            filter: blur(2px);
+        }
+
+        .noc-slide-page.slide-hidden {
+            display: none !important;
+        }
+
+        /* Slide Progress Bar */
+        .slide-rotation-progress-track {
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+            position: sticky;
+            top: 57px;
+            z-index: 1025;
+            overflow: hidden;
+        }
+
+        .slide-rotation-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #06b6d4, #3b82f6, #10b981);
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+            transition: width 1s linear;
+        }
+
+        .slide-rotation-progress-bar.slide-2-active {
+            background: linear-gradient(90deg, #a855f7, #ec4899, #f59e0b);
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
+        }
+
+        /* Slide Switcher Buttons */
+        .btn-slide-tab {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid transparent;
+            font-size: 0.72rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 4px 10px;
+            border-radius: 6px;
+            transition: all 0.25s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-slide-tab:hover {
+            color: #f1f5f9;
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .btn-slide-tab.active {
+            background: rgba(6, 182, 212, 0.22);
+            color: #22d3ee;
+            border-color: rgba(6, 182, 212, 0.5);
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.25);
+        }
+        .btn-slide-tab.active.slide-2-btn {
+            background: rgba(168, 85, 247, 0.22);
+            color: #c084fc;
+            border-color: rgba(168, 85, 247, 0.5);
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+        }
+
+        /* Slide 2 Cards Styling */
+        .latency-card {
+            background: #0d1527;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 12px 14px;
+            transition: all 0.25s ease;
+            contain: content;
+        }
+        .latency-card:hover {
+            border-color: rgba(6, 182, 212, 0.4);
+            background: #111b33;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+        }
+
+        .unej-app-card {
+            background: #0d1527;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 12px 14px;
+            transition: all 0.25s ease;
+            contain: content;
+        }
+        .unej-app-card:hover {
+            border-color: rgba(168, 85, 247, 0.4);
+            background: #111b33;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+        }
+
+        .hover-cyan:hover span {
+            color: #22d3ee !important;
+        }
+
+        .mini-sparkline {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 2.5px;
+            height: 22px;
+            padding: 2px 4px;
+            background: rgba(0, 0, 0, 0.35);
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .mini-sparkline-bar {
+            width: 3.5px;
+            border-radius: 1px;
+            min-height: 3px;
+            transition: height 0.3s ease;
+        }
     </style>
 </head>
 <body class="noc-grid-overlay">
@@ -306,13 +466,39 @@
             </div>
         </div>
 
-        <!-- Center: Big Live Digital Clock -->
-        <div class="text-center mx-auto d-none d-md-block">
-            <div class="font-mono fw-extrabold text-light fs-4 lh-1" id="nocClock" style="letter-spacing: 0.05em;">
-                --:--:-- WIB
+        <!-- Center: Slide Switcher & Big Live Digital Clock -->
+        <div class="d-flex align-items-center gap-3 mx-auto">
+            <!-- Slide Switcher & 60s Timer Pill -->
+            <div class="d-flex align-items-center gap-1 p-1 rounded-3" style="background: rgba(13, 21, 39, 0.9); border: 1px solid rgba(255, 255, 255, 0.12);">
+                <button class="btn btn-sm btn-slide-tab active" id="btnSlide1" onclick="switchSlide(1)" title="Slide 1: Trafik, Core Network & Backbone">
+                    <i class="bi bi-diagram-3-fill me-1 text-cyan"></i>
+                    <span class="d-none d-xl-inline">Slide 1:</span> Trafik &amp; Backbone
+                </button>
+                <button class="btn btn-sm btn-slide-tab" id="btnSlide2" onclick="switchSlide(2)" title="Slide 2: Latensi Global & Aplikasi UNEJ">
+                    <i class="bi bi-globe-americas me-1 text-purple"></i>
+                    <span class="d-none d-xl-inline">Slide 2:</span> Latensi &amp; Layanan UNEJ
+                </button>
+                <div class="vr bg-secondary opacity-25 mx-1" style="height: 18px;"></div>
+                <!-- 60s Countdown Pill -->
+                <div class="d-flex align-items-center gap-1 px-2 py-0.5 rounded font-mono text-light" style="font-size: 0.72rem; background: rgba(6, 182, 212, 0.12); border: 1px solid rgba(6, 182, 212, 0.3);" title="Waktu tersisa sebelum rotasi slide otomatis (60 detik)">
+                    <i class="bi bi-stopwatch text-cyan"></i>
+                    <span id="slideTimerText">60s</span>
+                </div>
+                <!-- Pause / Auto Toggle -->
+                <button class="btn btn-sm btn-noc px-2 py-0.5" id="btnSlidePause" onclick="toggleSlidePause()" title="Jeda / Lanjutkan rotasi slide otomatis (1 menit)">
+                    <i class="bi bi-pause-fill" id="slidePauseIcon"></i>
+                    <span class="d-none d-xl-inline" id="slidePauseText">Auto</span>
+                </button>
             </div>
-            <div class="text-secondary font-mono small mt-0.5" id="nocDate" style="font-size: 0.72rem;">
-                Memuat tanggal...
+
+            <!-- Big Live Digital Clock -->
+            <div class="text-center d-none d-lg-block">
+                <div class="font-mono fw-extrabold text-light fs-4 lh-1" id="nocClock" style="letter-spacing: 0.05em;">
+                    --:--:-- WIB
+                </div>
+                <div class="text-secondary font-mono small mt-0.5" id="nocDate" style="font-size: 0.72rem;">
+                    Memuat tanggal...
+                </div>
             </div>
         </div>
 
@@ -356,7 +542,19 @@
         </div>
     </header>
 
-    <!-- DEDICATED SITE SUB-NAVBAR (Smooth Horizontal Scroll for 29+ Sites) -->
+    <!-- TOP PROGRESS BAR FOR 60s SLIDE ROTATION -->
+    <div class="slide-rotation-progress-track">
+        <div class="slide-rotation-progress-bar" id="slideProgressBar"></div>
+    </div>
+
+    <!-- VIEWPORT ROTATION CONTAINER (SLIDE 1 & SLIDE 2) -->
+    <div class="noc-viewport-wrapper">
+        <!-- ============================================
+             SLIDE 1: TRAFIK, CORE NETWORK, SFP & BACKBONE
+             ============================================ -->
+        <div id="nocSlide1" class="noc-slide-page slide-active">
+
+            <!-- DEDICATED SITE SUB-NAVBAR (Smooth Horizontal Scroll for 29+ Sites) -->
     <nav class="site-subnav py-1.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex align-items-center gap-2.5" style="background: #0b132b; z-index: 1010; position: sticky; top: 57px;">
         <div class="d-flex align-items-center gap-1.5 text-secondary small font-mono flex-shrink-0 pe-2 border-end border-light border-opacity-10">
             <i class="bi bi-geo-alt-fill text-warning"></i>
@@ -1032,9 +1230,483 @@
         </div>
 
     </main>
+        </div><!-- /#nocSlide1 -->
+
+        <!-- ====================================================
+             SLIDE 2: LATENSI GLOBAL (Google/Cloudflare) & UNEJ APPS
+             ==================================================== -->
+        <div id="nocSlide2" class="noc-slide-page slide-hidden">
+            <!-- SUB-NAV / TICKER FOR SLIDE 2 -->
+            <nav class="site-subnav py-1.5 px-3 px-md-4 border-bottom border-light border-opacity-10 d-flex align-items-center justify-content-between flex-wrap gap-2" style="background: #0b132b; z-index: 1010; position: sticky; top: 57px;">
+                <div class="d-flex align-items-center gap-2 text-secondary small font-mono">
+                    <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 0.72rem;">
+                        <i class="bi bi-shield-check me-1"></i>SLIDE 2: UPSTREAM &amp; CAMPUS SERVICES
+                    </span>
+                    <span class="text-light fw-bold" style="font-size: 0.78rem;">
+                        Monitoring Latensi Upstream Global (Google, Cloudflare) &amp; Respon Layanan Digital Universitas Jember
+                    </span>
+                </div>
+                <div class="d-flex align-items-center gap-2 font-mono text-secondary small" style="font-size: 0.72rem;">
+                    <span class="text-success"><i class="bi bi-dot"></i>Live Probe: 10s</span>
+                    <span class="text-secondary">|</span>
+                    <span id="slide2LastUpdate">Update: Memuat...</span>
+                </div>
+            </nav>
+
+            <div class="container-fluid px-3 px-md-4 py-3">
+                <!-- 4 HERO KPI METRIC WIDGETS -->
+                <div class="row g-3 mb-3">
+                    <!-- Metric 1: Avg Latensi Global -->
+                    <div class="col-6 col-lg-3">
+                        <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="text-secondary small font-mono fw-bold">AVG LATENSI GLOBAL</span>
+                                <span class="badge bg-info bg-opacity-10 text-cyan border border-info border-opacity-25 font-mono" style="font-size: 0.65rem;">ANYCAST</span>
+                            </div>
+                            <div class="d-flex align-items-baseline gap-2 mt-2">
+                                <span class="font-mono fs-3 fw-extrabold text-cyan" id="heroAvgGlobalLat">
+                                    {{ services_health.summary.avg_global_latency_ms|default('0.0') }}
+                                </span>
+                                <span class="text-secondary small font-mono">ms RTT</span>
+                            </div>
+                            <div class="text-secondary small mt-1 font-mono" style="font-size: 0.72rem;">
+                                Google DNS &amp; Cloudflare CDN
+                            </div>
+                            <div class="position-absolute bottom-0 start-0 end-0" style="height: 2px; background: linear-gradient(90deg, #06b6d4, transparent);"></div>
+                        </div>
+                    </div>
+
+                    <!-- Metric 2: Google & Cloudflare Split -->
+                    <div class="col-6 col-lg-3">
+                        <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="text-secondary small font-mono fw-bold">GOOGLE vs CLOUDFLARE</span>
+                                <span class="badge bg-success bg-opacity-10 text-emerald border border-success border-opacity-25 font-mono" style="font-size: 0.65rem;">EDGE POP</span>
+                            </div>
+                            <div class="d-flex align-items-center justify-content-between mt-2 font-mono">
+                                <div>
+                                    <div class="text-secondary" style="font-size: 0.68rem;"><i class="bi bi-google me-1 text-info"></i>Google:</div>
+                                    <div class="fw-extrabold text-light fs-5" id="heroAvgGoogle">
+                                        {{ services_health.summary.avg_google_ms|default('0.0') }} <span class="fs-6 text-secondary">ms</span>
+                                    </div>
+                                </div>
+                                <div class="vr bg-secondary opacity-25" style="height: 30px;"></div>
+                                <div>
+                                    <div class="text-secondary" style="font-size: 0.68rem;"><i class="bi bi-cloud-fill me-1 text-warning"></i>Cloudflare:</div>
+                                    <div class="fw-extrabold text-light fs-5" id="heroAvgCf">
+                                        {{ services_health.summary.avg_cloudflare_ms|default('0.0') }} <span class="fs-6 text-secondary">ms</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="position-absolute bottom-0 start-0 end-0" style="height: 2px; background: linear-gradient(90deg, #10b981, transparent);"></div>
+                        </div>
+                    </div>
+
+                    <!-- Metric 3: UNEJ Apps Health % -->
+                    <div class="col-6 col-lg-3">
+                        <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="text-secondary small font-mono fw-bold">UPTIME SISTEM UNEJ</span>
+                                <span class="badge bg-emerald bg-opacity-10 text-emerald border border-emerald border-opacity-25 font-mono" id="heroAppHealthBadge" style="font-size: 0.65rem;">
+                                    ONLINE
+                                </span>
+                            </div>
+                            <div class="d-flex align-items-baseline gap-2 mt-2">
+                                <span class="font-mono fs-3 fw-extrabold text-emerald" id="heroAppHealthPct">
+                                    {{ services_health.summary.app_health_pct|default('100') }}%
+                                </span>
+                                <span class="text-secondary small font-mono" id="heroAppsOnlineCount">
+                                    ({{ services_health.summary.online_apps|default(8) }}/{{ services_health.summary.total_apps|default(8) }} App)
+                                </span>
+                            </div>
+                            <div class="text-secondary small mt-1 font-mono" style="font-size: 0.72rem;">
+                                SISTER, Portal, MMP, Repository, dll
+                            </div>
+                            <div class="position-absolute bottom-0 start-0 end-0" style="height: 2px; background: linear-gradient(90deg, #34d399, transparent);"></div>
+                        </div>
+                    </div>
+
+                    <!-- Metric 4: Avg Respon Aplikasi UNEJ -->
+                    <div class="col-6 col-lg-3">
+                        <div class="glass-panel p-3 h-100 position-relative overflow-hidden">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="text-secondary small font-mono fw-bold">AVG RESPON SISTEM UNEJ</span>
+                                <span class="badge bg-purple bg-opacity-10 text-purple border border-purple border-opacity-25 font-mono" style="font-size: 0.65rem;">HTTP TTFB</span>
+                            </div>
+                            <div class="d-flex align-items-baseline gap-2 mt-2">
+                                <span class="font-mono fs-3 fw-extrabold text-purple" id="heroAvgAppLat">
+                                    {{ services_health.summary.avg_unej_app_latency_ms|default('0') }}
+                                </span>
+                                <span class="text-secondary small font-mono">ms</span>
+                            </div>
+                            <div class="text-secondary small mt-1 font-mono" style="font-size: 0.72rem;">
+                                Rata-rata HTTP 200 Handshake Kampus
+                            </div>
+                            <div class="position-absolute bottom-0 start-0 end-0" style="height: 2px; background: linear-gradient(90deg, #a855f7, transparent);"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MAIN 2-COLUMN VIEWPORT: GLOBAL LATENCY & UNEJ APPS -->
+                <div class="row g-3">
+                    <!-- LEFT COLUMN: GLOBAL UPSTREAM LATENCY (GOOGLE & CLOUDFLARE) -->
+                    <div class="col-lg-5 col-xl-5">
+                        <div class="glass-panel p-3 h-100 d-flex flex-column">
+                            <div class="d-flex align-items-center justify-content-between pb-2 mb-2 border-bottom border-light border-opacity-10">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="pulse-dot online"></span>
+                                    <h2 class="h6 mb-0 fw-extrabold text-light font-mono d-flex align-items-center gap-2" style="letter-spacing: 0.03em;">
+                                        <i class="bi bi-globe2 text-info"></i>
+                                        <span>LATENSI UPSTREAM GLOBAL</span>
+                                    </h2>
+                                </div>
+                                <span class="badge font-mono" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); font-size: 0.68rem;">
+                                    GOOGLE &amp; CLOUDFLARE
+                                </span>
+                            </div>
+                            
+                            <div class="text-secondary font-mono small mb-3" style="font-size: 0.72rem;">
+                                Pengujian waktu tempuh paket data bolak-balik (RTT) Anycast DNS &amp; CDN dari Gateway Backbone UNEJ.
+                            </div>
+
+                            <!-- Target Cards Container -->
+                            <div class="d-flex flex-column gap-2.5 flex-grow-1" id="globalTargetsContainer">
+                                {% for g in services_health.global_targets %}
+                                <div class="latency-card" id="card_{{ g.id }}">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div class="d-flex align-items-center gap-2.5">
+                                            <div class="rounded-3 p-2 d-flex align-items-center justify-content-center" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); width: 38px; height: 38px;">
+                                                <i class="bi {{ g.icon }} fs-5 {% if 'google' in g.id %}text-info{% elif 'cloudflare' in g.id %}text-warning{% elif 'opendns' in g.id %}text-success{% else %}text-purple{% endif %}"></i>
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold text-light font-mono d-flex align-items-center gap-1.5" style="font-size: 0.85rem;">
+                                                    <span>{{ g.name }}</span>
+                                                    <span class="badge bg-secondary bg-opacity-25 text-secondary font-mono" style="font-size: 0.62rem;">{{ g.host }}</span>
+                                                </div>
+                                                <div class="text-secondary small font-mono mt-0.5" style="font-size: 0.7rem;">
+                                                    {{ g.provider }} • <span class="text-info">{{ g.type }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="text-end font-mono">
+                                            <div class="fs-5 fw-extrabold" style="color: {{ g.quality.color }};" id="lat_{{ g.id }}">
+                                                {{ g.latency_display }}
+                                            </div>
+                                            <span class="badge font-mono" style="background: {{ g.quality.bg }}; color: {{ g.quality.color }}; font-size: 0.62rem;" id="badge_{{ g.id }}">
+                                                {{ g.quality.badge }}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Sparkline Bar History -->
+                                    <div class="d-flex align-items-center justify-content-between mt-2 pt-2 border-top border-light border-opacity-5">
+                                        <span class="text-secondary font-mono small" style="font-size: 0.65rem;">
+                                            <i class="bi bi-clock-history me-1"></i>Tren 12 Titik RTT
+                                        </span>
+                                        <div class="mini-sparkline" id="spark_{{ g.id }}">
+                                            {% for val in g.history %}
+                                            <div class="mini-sparkline-bar" style="height: {{ (val / 100 * 18)|round|int if val < 100 else 18 }}px; background: {% if val < 20 %}#34d399{% elif val < 50 %}#22d3ee{% elif val < 100 %}#fbbf24{% else %}#f87171{% endif %};" title="{{ val }} ms"></div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: UNEJ CAMPUS APPLICATIONS HEALTH -->
+                    <div class="col-lg-7 col-xl-7">
+                        <div class="glass-panel p-3 h-100 d-flex flex-column">
+                            <div class="d-flex align-items-center justify-content-between pb-2 mb-2 border-bottom border-light border-opacity-10">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="pulse-dot online"></span>
+                                    <h2 class="h6 mb-0 fw-extrabold text-light font-mono d-flex align-items-center gap-2" style="letter-spacing: 0.03em;">
+                                        <i class="bi bi-mortarboard-fill text-purple"></i>
+                                        <span>KESEHATAN &amp; RESPON APLIKASI KAMPUS UNEJ</span>
+                                    </h2>
+                                </div>
+                                <span class="badge font-mono" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.68rem;">
+                                    8 SISTEM UTAMA KAMPUS
+                                </span>
+                            </div>
+
+                            <div class="text-secondary font-mono small mb-3" style="font-size: 0.72rem;">
+                                Pengujian ketersediaan HTTP 200, validitas SSL Certificate, dan response time (TTFB) sistem layanan mahasiswa &amp; dosen.
+                            </div>
+
+                            <!-- Application Grid (2 Kolom Responsif) -->
+                            <div class="row g-2.5 flex-grow-1" id="unejAppsContainer">
+                                {% for a in services_health.unej_apps %}
+                                <div class="col-md-6">
+                                    <div class="unej-app-card h-100 d-flex flex-column justify-content-between" id="app_card_{{ a.id }}">
+                                        <div>
+                                            <div class="d-flex align-items-center justify-content-between mb-1.5">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="rounded-2 p-1.5 d-flex align-items-center justify-content-center" style="background: rgba(255, 255, 255, 0.05); width: 32px; height: 32px;">
+                                                        <i class="bi {{ a.icon }} fs-6" style="color: {{ a.badge_color }};"></i>
+                                                    </div>
+                                                    <div>
+                                                        <a href="{{ a.url }}" target="_blank" class="fw-bold text-light font-mono text-decoration-none d-flex align-items-center gap-1 hover-cyan" style="font-size: 0.82rem;">
+                                                            <span>{{ a.name }}</span>
+                                                            <i class="bi bi-box-arrow-up-right text-secondary" style="font-size: 0.65rem;"></i>
+                                                        </a>
+                                                        <div class="text-secondary small font-mono" style="font-size: 0.67rem;">{{ a.category }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="text-end font-mono">
+                                                    <span class="badge font-mono" id="app_status_{{ a.id }}" style="background: {% if a.is_online %}rgba(16, 185, 129, 0.18){% else %}rgba(239, 68, 68, 0.18){% endif %}; color: {% if a.is_online %}#34d399{% else %}#f87171{% endif %}; font-size: 0.65rem; border: 1px solid {% if a.is_online %}rgba(16, 185, 129, 0.3){% else %}rgba(239, 68, 68, 0.3){% endif %};">
+                                                        {{ a.status_display }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-2 pt-2 border-top border-light border-opacity-5">
+                                            <div class="d-flex align-items-center justify-content-between font-mono mb-1">
+                                                <span class="text-secondary small" style="font-size: 0.68rem;">
+                                                    <i class="bi bi-shield-lock-fill text-success me-0.5"></i>SSL Valid
+                                                </span>
+                                                <div class="d-flex align-items-baseline gap-1">
+                                                    <span class="fw-extrabold" style="color: {{ a.quality.color }}; font-size: 0.95rem;" id="app_lat_{{ a.id }}">
+                                                        {{ a.latency_display }}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <!-- Visual Progress Bar for Latency -->
+                                            <div class="progress" style="height: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 2px; overflow: hidden;">
+                                                <div class="progress-bar" id="app_bar_{{ a.id }}" role="progressbar" style="width: {{ (a.latency_ms / 1500 * 100)|round|int if a.latency_ms and a.latency_ms < 1500 else 100 }}%; background: {{ a.quality.color }};"></div>
+                                            </div>
+
+                                            <div class="d-flex align-items-center justify-content-between mt-1.5 font-mono" style="font-size: 0.63rem;">
+                                                <span class="text-secondary" style="font-size: 0.62rem;">{{ a.desc }}</span>
+                                                <span class="badge" id="app_badge_{{ a.id }}" style="background: {{ a.quality.bg }}; color: {{ a.quality.color }}; font-size: 0.62rem;">
+                                                    {{ a.quality.badge }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOTTOM INFORMATIONAL BANNER: UPSTREAM PEERING & ANYCAST INSIGHT -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="glass-panel p-2.5 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2 font-mono text-secondary small" style="font-size: 0.72rem;">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-info-circle-fill text-cyan"></i>
+                                <span>
+                                    <strong class="text-light">Topologi Upstream UNEJ:</strong>
+                                    Telkom Indonesia (AS7713) &amp; Link Net (AS23700) peering langsung ke Google POP Jakarta (AS15169) &amp; Cloudflare Anycast (AS13335).
+                                </span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary bg-opacity-25 text-light font-mono">BGP BGP4/6</span>
+                                <span class="text-cyan"><i class="bi bi-arrow-repeat me-1"></i>Rotasi Slide: 60 Detik</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div><!-- /#nocSlide2 -->
+
+    </div><!-- /.noc-viewport-wrapper -->
 
     <!-- LIVE TELEMETRY LOGIC & MULTI-RANGE CHART SCRIPT -->
     <script>
+        // ========================================================
+        // DUAL-SLIDE ROTATION ENGINE (Slide 1: 60s, Slide 2: 60s)
+        // ========================================================
+        const SLIDE_DURATION_SEC = 60; // 1 menit pergantian otomatis
+        let currentSlide = 1;
+        let slideCountdown = SLIDE_DURATION_SEC;
+        let isSlidePaused = false;
+        let servicesHealthFetching = false;
+
+        function switchSlide(targetSlide, isManual = false) {
+            if (targetSlide === currentSlide) return;
+
+            const slide1El = document.getElementById('nocSlide1');
+            const slide2El = document.getElementById('nocSlide2');
+            const btn1 = document.getElementById('btnSlide1');
+            const btn2 = document.getElementById('btnSlide2');
+            const progBar = document.getElementById('slideProgressBar');
+
+            if (!slide1El || !slide2El) return;
+
+            if (targetSlide === 2) {
+                // Transisi 3D: Slide 1 keluar ke kiri, Slide 2 masuk dari kanan
+                slide1El.classList.remove('slide-active');
+                slide1El.classList.add('slide-exit-left');
+
+                slide2El.classList.remove('slide-hidden', 'slide-exit-right', 'slide-exit-left');
+                void slide2El.offsetWidth; // Trigger reflow for smooth animation
+                slide2El.classList.add('slide-active');
+
+                setTimeout(() => {
+                    slide1El.classList.add('slide-hidden');
+                    slide1El.classList.remove('slide-exit-left');
+                }, 750);
+
+                if (btn1) btn1.classList.remove('active');
+                if (btn2) btn2.classList.add('active', 'slide-2-btn');
+                if (progBar) progBar.classList.add('slide-2-active');
+
+                currentSlide = 2;
+                fetchServicesHealth();
+            } else {
+                // Transisi 3D: Slide 2 keluar ke kanan, Slide 1 masuk dari kiri
+                slide2El.classList.remove('slide-active');
+                slide2El.classList.add('slide-exit-right');
+
+                slide1El.classList.remove('slide-hidden', 'slide-exit-left', 'slide-exit-right');
+                void slide1El.offsetWidth; // Trigger reflow
+                slide1El.classList.add('slide-active');
+
+                setTimeout(() => {
+                    slide2El.classList.add('slide-hidden');
+                    slide2El.classList.remove('slide-exit-right');
+                }, 750);
+
+                if (btn2) btn2.classList.remove('active', 'slide-2-btn');
+                if (btn1) btn1.classList.add('active');
+                if (progBar) progBar.classList.remove('slide-2-active');
+
+                currentSlide = 1;
+            }
+
+            slideCountdown = SLIDE_DURATION_SEC;
+            updateSlideTimerUI();
+        }
+
+        function toggleSlidePause() {
+            isSlidePaused = !isSlidePaused;
+            const pauseIcon = document.getElementById('slidePauseIcon');
+            const pauseText = document.getElementById('slidePauseText');
+            const btn = document.getElementById('btnSlidePause');
+
+            if (isSlidePaused) {
+                if (pauseIcon) pauseIcon.className = 'bi bi-play-fill text-success';
+                if (pauseText) pauseText.innerText = 'Resume';
+                if (btn) btn.classList.add('border-warning');
+            } else {
+                if (pauseIcon) pauseIcon.className = 'bi bi-pause-fill';
+                if (pauseText) pauseText.innerText = 'Auto';
+                if (btn) btn.classList.remove('border-warning');
+            }
+        }
+
+        function updateSlideTimerUI() {
+            const timerText = document.getElementById('slideTimerText');
+            const progBar = document.getElementById('slideProgressBar');
+            if (timerText) {
+                timerText.innerText = `${slideCountdown}s`;
+            }
+            if (progBar) {
+                const pct = ((SLIDE_DURATION_SEC - slideCountdown) / SLIDE_DURATION_SEC) * 100;
+                progBar.style.width = `${pct}%`;
+            }
+        }
+
+        async function fetchServicesHealth() {
+            if (servicesHealthFetching) return;
+            servicesHealthFetching = true;
+            try {
+                const res = await fetch('/api/nms/public/services-health');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (data && (data.status === 'success' || data.summary)) {
+                    renderServicesHealth(data);
+                }
+            } catch (err) {
+                console.warn('Error fetching services health:', err);
+            } finally {
+                servicesHealthFetching = false;
+            }
+        }
+
+        function renderServicesHealth(data) {
+            const s = data.summary || {};
+            const elAvgGlobal = document.getElementById('heroAvgGlobalLat');
+            const elAvgGoogle = document.getElementById('heroAvgGoogle');
+            const elAvgCf = document.getElementById('heroAvgCf');
+            const elAppPct = document.getElementById('heroAppHealthPct');
+            const elAppOnline = document.getElementById('heroAppsOnlineCount');
+            const elAvgApp = document.getElementById('heroAvgAppLat');
+            const elLastUp = document.getElementById('slide2LastUpdate');
+
+            if (elAvgGlobal) elAvgGlobal.innerText = s.avg_global_latency_ms !== undefined ? s.avg_global_latency_ms.toFixed(1) : '0.0';
+            if (elAvgGoogle) elAvgGoogle.innerHTML = `${s.avg_google_ms !== undefined ? s.avg_google_ms.toFixed(1) : '0.0'} <span class="fs-6 text-secondary">ms</span>`;
+            if (elAvgCf) elAvgCf.innerHTML = `${s.avg_cloudflare_ms !== undefined ? s.avg_cloudflare_ms.toFixed(1) : '0.0'} <span class="fs-6 text-secondary">ms</span>`;
+            if (elAppPct) elAppPct.innerText = `${s.app_health_pct !== undefined ? s.app_health_pct.toFixed(0) : 100}%`;
+            if (elAppOnline) elAppOnline.innerText = `(${s.online_apps || 8}/${s.total_apps || 8} App)`;
+            if (elAvgApp) elAvgApp.innerText = s.avg_unej_app_latency_ms !== undefined ? Math.round(s.avg_unej_app_latency_ms) : '0';
+            if (elLastUp && s.timestamp) elLastUp.innerText = `Update: ${s.timestamp}`;
+
+            // Render Global Targets (Google, Cloudflare, dll)
+            if (data.global_targets) {
+                data.global_targets.forEach(g => {
+                    const latEl = document.getElementById(`lat_${g.id}`);
+                    const badgeEl = document.getElementById(`badge_${g.id}`);
+                    const sparkEl = document.getElementById(`spark_${g.id}`);
+
+                    if (latEl) {
+                        latEl.innerText = g.latency_display;
+                        latEl.style.color = g.quality.color;
+                    }
+                    if (badgeEl) {
+                        badgeEl.innerText = g.quality.badge;
+                        badgeEl.style.color = g.quality.color;
+                        badgeEl.style.background = g.quality.bg;
+                    }
+                    if (sparkEl && g.history && g.history.length > 0) {
+                        sparkEl.innerHTML = g.history.map(val => {
+                            const h = val < 100 ? Math.max(3, Math.round(val / 100 * 18)) : 18;
+                            const col = val < 20 ? '#34d399' : (val < 50 ? '#22d3ee' : (val < 100 ? '#fbbf24' : '#f87171'));
+                            return `<div class="mini-sparkline-bar" style="height: ${h}px; background: ${col};" title="${val} ms"></div>`;
+                        }).join('');
+                    }
+                });
+            }
+
+            // Render UNEJ Applications
+            if (data.unej_apps) {
+                data.unej_apps.forEach(a => {
+                    const statEl = document.getElementById(`app_status_${a.id}`);
+                    const latEl = document.getElementById(`app_lat_${a.id}`);
+                    const barEl = document.getElementById(`app_bar_${a.id}`);
+                    const badgeEl = document.getElementById(`app_badge_${a.id}`);
+
+                    if (statEl) {
+                        statEl.innerText = a.status_display;
+                        statEl.style.color = a.is_online ? '#34d399' : '#f87171';
+                        statEl.style.background = a.is_online ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)';
+                        statEl.style.borderColor = a.is_online ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                    }
+                    if (latEl) {
+                        latEl.innerText = a.latency_display;
+                        latEl.style.color = a.quality.color;
+                    }
+                    if (barEl) {
+                        const pct = a.latency_ms && a.latency_ms < 1500 ? Math.round(a.latency_ms / 1500 * 100) : 100;
+                        barEl.style.width = `${pct}%`;
+                        barEl.style.background = a.quality.color;
+                    }
+                    if (badgeEl) {
+                        badgeEl.innerText = a.quality.badge;
+                        badgeEl.style.color = a.quality.color;
+                        badgeEl.style.background = a.quality.bg;
+                    }
+                });
+            }
+        }
+
         // Configuration
         const REFRESH_INTERVAL_SEC = 5;
         let countdown = REFRESH_INTERVAL_SEC;
@@ -2190,12 +2862,31 @@
             }
         }, 1000);
 
+        // Slide 60-Second Auto-Rotation Loop (1 Menit Bergantian)
+        setInterval(() => {
+            if (isSlidePaused) return;
+
+            slideCountdown--;
+            if (slideCountdown <= 0) {
+                const nextSlide = (currentSlide === 1) ? 2 : 1;
+                switchSlide(nextSlide);
+            } else {
+                updateSlideTimerUI();
+            }
+        }, 1000);
+
+        // Periodic Background Telemetry Fetch untuk Latensi Global & Aplikasi UNEJ (10s)
+        setInterval(() => {
+            fetchServicesHealth();
+        }, 10000);
+
         // Initialize Alert banner toggle state on load
         updateAlertToggleUI(lastKnownIncidentCount);
 
         // First initial fetch & load default history (1 Hari)
         setTimeout(() => {
             fetchTelemetry();
+            fetchServicesHealth();
             reloadHistory();
         }, 800);
     </script>
